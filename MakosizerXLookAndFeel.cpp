@@ -1,6 +1,12 @@
 #include "MakosizerXLookAndFeel.h"
 
-#include <cmath>
+MakosizerXLookAndFeel::MakosizerXLookAndFeel()
+{
+    knobImage = juce::ImageCache::getFromMemory (
+        BinaryData::dark_metal_knob_png,
+        BinaryData::dark_metal_knob_pngSize);
+    jassert (knobImage.isValid());
+}
 
 void MakosizerXLookAndFeel::drawRotarySlider (juce::Graphics& graphics,
                                                int x, int y, int width, int height,
@@ -9,24 +15,10 @@ void MakosizerXLookAndFeel::drawRotarySlider (juce::Graphics& graphics,
                                                float rotaryEndAngle,
                                                juce::Slider& slider)
 {
-    juce::ignoreUnused (slider);
-
-    const auto bounds = juce::Rectangle<float> (static_cast<float> (x),
-                                                 static_cast<float> (y),
-                                                 static_cast<float> (width),
-                                                 static_cast<float> (height));
-    const auto diameter = juce::jmin (bounds.getWidth(), bounds.getHeight());
-    if (diameter <= 0.0f)
+    juce::ignoreUnused (sliderPosition, rotaryStartAngle, rotaryEndAngle, slider);
+    if (slider.getName().equalsIgnoreCase ("Destroy"))
         return;
 
-    const auto centre = bounds.getCentre();
-    const auto angle = rotaryStartAngle + sliderPosition * (rotaryEndAngle - rotaryStartAngle);
-    const auto pointerLength = diameter * 0.34f;
-    const auto pointerX = centre.x + std::sin (angle) * pointerLength;
-    const auto pointerY = centre.y - std::cos (angle) * pointerLength;
-
-    graphics.setColour (juce::Colour (0x66ff3434));
-    graphics.drawLine (centre.x, centre.y, pointerX, pointerY, 5.0f);
-    graphics.setColour (juce::Colour (0xffff3434));
-    graphics.drawLine (centre.x, centre.y, pointerX, pointerY, 2.2f);
+    graphics.drawImage (knobImage, x, y, width, height,
+                        0, 0, knobImage.getWidth(), knobImage.getHeight());
 }

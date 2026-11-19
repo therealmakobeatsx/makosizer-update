@@ -38,6 +38,8 @@ private:
 
     MakosizerXAudioProcessor& audioProcessor;
     juce::Image backgroundImage;
+    juce::Image destroyKnobImage;
+    juce::ImageComponent destroyKnobArtwork;
     MakosizerXLookAndFeel rotaryLookAndFeel;
     std::array<juce::Slider, 14> sliders;
     std::array<std::unique_ptr<SliderAttachment>, 14> attachments;

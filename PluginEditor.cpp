@@ -98,6 +98,15 @@ MakosizerXAudioProcessorEditor::MakosizerXAudioProcessorEditor (
     backgroundImage = juce::ImageCache::getFromMemory (
         BinaryData::makosizerx_background_png,
         BinaryData::makosizerx_background_pngSize);
+    destroyKnobImage = juce::ImageCache::getFromMemory (
+        BinaryData::dark_metal_knob_png,
+        BinaryData::dark_metal_knob_pngSize);
+    jassert (destroyKnobImage.isValid());
+
+    destroyKnobArtwork.setImage (destroyKnobImage);
+    destroyKnobArtwork.setBounds (638, 348, 244, 244);
+    destroyKnobArtwork.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (destroyKnobArtwork);
 
     for (std::size_t i = 0; i < controlPlacements.size(); ++i)
     {

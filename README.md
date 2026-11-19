@@ -1,25 +1,47 @@
 # MakosizerX
 
-MakosizerX is a JUCE-based stereo lo-fi audio effect. It builds as a VST3 on
-Windows, macOS, and Linux; macOS builds also include an Audio Unit
-(`.component`).
+MakosizerX is a JUCE-based stereo lo-fi audio effect. It builds as a VST3 and
+Standalone application on Windows, macOS, and Linux; macOS builds also include
+an Audio Unit (`.component`).
 
 ## Build
 
 JUCE 8.0.6 is fetched by CMake. Install a C++17 compiler and CMake 3.22 or
-newer, then run:
+newer, then build the Release configuration:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --target MakosizerX_VST3
+cmake --build build --config Release \
+  --target MakosizerX_VST3 MakosizerX_Standalone
 ```
 
 On macOS, also build the Audio Unit with
-`cmake --build build --config Release --target MakosizerX_AU`. The plugin
-bundles are written under `build/MakosizerX_artefacts/Release/`.
-Linux users need the development packages for ALSA, OpenGL, GTK 3, and X11.
-The GitHub Actions workflow builds VST3 bundles on all three platforms and an
-AU bundle on macOS.
+`cmake --build build --config Release --target MakosizerX_AU`. Build outputs
+are written under `build/MakosizerX_artefacts/Release/`. Linux users need the
+development packages for ALSA, OpenGL, GTK 3, and X11.
+
+## Automated releases
+
+The `MakosizerX Release` GitHub Actions workflow builds and tests Release
+configurations on all three platforms for pushes to `main`, version tags, and
+manual dispatches. A push to `main` automatically creates and publishes the
+next stable semantic version, packages all platform downloads, and generates
+release notes and a downloadable changelog. Release assets include
+`MakosizerX-macOS.zip`, `MakosizerX-Windows.zip`, `MakosizerX Setup.exe`,
+`MakosizerX-Linux.zip`, and `MakosizerX-Linux.tar.gz`; the raw VST3 bundles and
+macOS AU component are available in the corresponding Actions build artifacts.
+Commit messages use Conventional
+Commits for release increments: `feat:` advances the minor version,
+`BREAKING CHANGE:` or `type!:` advances the major version, and other changes
+advance the patch version. `VERSION` provides the initial version baseline.
+
+The release is published unsigned when signing credentials are not configured.
+Optional GitHub Actions secrets are `WINDOWS_CERTIFICATE_BASE64` and
+`WINDOWS_CERTIFICATE_PASSWORD` for Windows signing, and
+`MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD`, and
+`MACOS_SIGNING_IDENTITY` for macOS signing. Set `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` as well to enable macOS
+notarization. None of these secrets is required to build or publish a release.
 
 ## DSP oversampling
 

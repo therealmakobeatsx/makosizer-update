@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MakosizerX VERSION 1.0.0 LANGUAGES C CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" MAKOSIZERX_DEFAULT_VERSION LIMIT_COUNT 1)
+set(MAKOSIZERX_VERSION "${MAKOSIZERX_DEFAULT_VERSION}" CACHE STRING "MakosizerX semantic version")
+if(NOT MAKOSIZERX_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "MAKOSIZERX_VERSION must use MAJOR.MINOR.PATCH format")
+endif()
+
+project(MakosizerX VERSION ${MAKOSIZERX_VERSION} LANGUAGES C CXX)
 
 include(FetchContent)
 
@@ -38,6 +44,7 @@ juce_generate_juce_header(MakosizerX)
 juce_add_binary_data(MakosizerXAssets
     SOURCES
         makosizerx_background.png
+        dark_metal_knob.png
 )
 
 target_sources(MakosizerX
