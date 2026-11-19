@@ -233,11 +233,11 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                                        sampleRate * 0.45f);
     const auto vinylCoefficient = 1.0f - std::exp (
         static_cast<float> (-twoPi) * vinylCutoff / sampleRate);
-    const auto compressorAttack = std::exp (-1.0f / (0.010f * sampleRate));
-    const auto compressorRelease = std::exp (-1.0f / (0.180f * sampleRate));
-    const auto compressorRatio = 2.0f + comp * 8.0f;
-    const auto compressorThreshold = 0.48f - comp * 0.17f;
-    const auto compressorMakeup = 1.0f + comp * 0.65f;
+    const auto compressorAttack = std::exp (-1.0f / (0.006f * sampleRate));
+    const auto compressorRelease = std::exp (-1.0f / (0.145f * sampleRate));
+    const auto compressorRatio = 2.5f + comp * 11.5f;
+    const auto compressorThreshold = 0.38f - comp * 0.28f;
+    const auto compressorMakeup = 1.0f + comp * 0.85f;
     const auto fixedDelay = static_cast<float> (
         std::max (1, static_cast<int> (std::round (currentSampleRate * 0.005))));
     const auto dryDelay = static_cast<float> (latencySamples);
@@ -362,11 +362,20 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                     processed *= compressorMakeup;
                     if (state.compressorEnvelope > compressorThreshold)
                     {
+                        const auto kneeWidth = compressorThreshold * 0.18f;
+                        const auto over = state.compressorEnvelope - (compressorThreshold - kneeWidth);
+                        const auto knee = over > 0.0f
+                            ? juce::jlimit (0.0f, 1.0f, over / (2.0f * kneeWidth))
+                            : 0.0f;
+                        const auto effectiveRatio = 1.0f
+                            + (compressorRatio - 1.0f) * knee;
                         const auto gain = std::pow (
                             compressorThreshold / state.compressorEnvelope,
-                            1.0f - 1.0f / compressorRatio);
+                            1.0f - 1.0f / effectiveRatio);
                         processed *= gain;
                     }
+                    const auto glueDrive = 1.0f + comp * 0.75f;
+                    processed = std::tanh (processed * glueDrive) / std::tanh (glueDrive);
                 }
                 wet[static_cast<std::size_t> (channel)] = processed;
             }

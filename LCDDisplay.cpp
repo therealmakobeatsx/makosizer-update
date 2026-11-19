@@ -5,6 +5,14 @@
 #include <cmath>
 #include <utility>
 
+namespace
+{
+bool approximatelyEqual (float left, float right) noexcept
+{
+    return std::abs (left - right) <= 0.00001f;
+}
+}
+
 LCDDisplay::LCDDisplay()
 {
     setOpaque (true);
@@ -25,12 +33,12 @@ void LCDDisplay::setState (State newState)
     newState.outputLevel = clampParameter (newState.outputLevel);
 
     if (newState.presetName == state.presetName
-        && newState.drive == state.drive
-        && newState.crush == state.crush
-        && newState.noise == state.noise
-        && newState.wow == state.wow
-        && newState.flutter == state.flutter
-        && newState.outputLevel == state.outputLevel
+        && approximatelyEqual (newState.drive, state.drive)
+        && approximatelyEqual (newState.crush, state.crush)
+        && approximatelyEqual (newState.noise, state.noise)
+        && approximatelyEqual (newState.wow, state.wow)
+        && approximatelyEqual (newState.flutter, state.flutter)
+        && approximatelyEqual (newState.outputLevel, state.outputLevel)
         && newState.oversamplingFactor == state.oversamplingFactor)
         return;
 

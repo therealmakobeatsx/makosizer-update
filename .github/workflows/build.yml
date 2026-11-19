@@ -24,7 +24,11 @@ jobs:
       - name: Configure and build VST3
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release --target MakosizerX_VST3 --parallel 2
+          cmake --build build --config Release --target MakosizerX_VST3 MakosizerX_Standalone --parallel 2
+      - name: Run DSP validation
+        run: |
+          cmake --build build --config Release --target MakosizerXDSPTests --parallel 2
+          ctest --test-dir build --output-on-failure
       - uses: actions/upload-artifact@v4
         with:
           name: MakosizerX-Linux-VST3
@@ -40,6 +44,11 @@ jobs:
         run: |
           cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release --target MakosizerX_VST3 --parallel 2
+      - name: Run DSP validation
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target MakosizerXDSPTests --parallel 2
+          ctest --test-dir build -C Release --output-on-failure
       - name: Package Windows VST3
         shell: pwsh
         run: |
@@ -63,12 +72,22 @@ jobs:
           } finally {
             $archive.Dispose()
           }
+
+          choco install innosetup --yes --no-progress
+          $env:MAKOSIZERX_VERSION = '1.0.0'
+          $env:MAKOSIZERX_VST3_PATH = (Resolve-Path -LiteralPath $bundle).Path
+          & iscc.exe $env:GITHUB_WORKSPACE\MakosizerX.iss "/O$output"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path -LiteralPath (Join-Path $output 'MakosizerX-Setup.exe') -PathType Leaf)) {
+            throw 'Inno Setup did not create MakosizerX-Setup.exe'
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: MakosizerX-Windows-VST3
           path: |
             build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
             dist/windows/MakosizerX-Windows-VST3.zip
+            dist/windows/MakosizerX-Setup.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -82,6 +101,10 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           cmake --build build --config Release --target MakosizerX_VST3 MakosizerX_AU --parallel 2
+      - name: Run DSP validation
+        run: |
+          cmake --build build --config Release --target MakosizerXDSPTests --parallel 2
+          ctest --test-dir build --output-on-failure
       - name: Verify universal bundles and package archives
         shell: bash
         run: |
@@ -112,6 +135,18 @@ jobs:
             dist/macos/MakosizerX-macOS-AU.zip
           unzip -tq dist/macos/MakosizerX-macOS-VST3.zip
           unzip -tq dist/macos/MakosizerX-macOS-AU.zip
+
+          stage=$(mktemp -d)
+          mkdir -p "$stage/Library/Audio/Plug-Ins/VST3" "$stage/Library/Audio/Plug-Ins/Components"
+          ditto "$vst3" "$stage/Library/Audio/Plug-Ins/VST3/MakosizerX.vst3"
+          ditto "$au" "$stage/Library/Audio/Plug-Ins/Components/MakosizerX.component"
+          pkgbuild --root "$stage" \
+            --identifier com.makosizerx.plugininstaller \
+            --version 1.0.0 \
+            --install-location / \
+            dist/macos/MakosizerX.pkg
+          rm -rf "$stage"
+          test -s dist/macos/MakosizerX.pkg
       - uses: actions/upload-artifact@v4
         with:
           name: MakosizerX-macOS-VST3
@@ -126,5 +161,6 @@ jobs:
           path: |
             build/MakosizerX_artefacts/Release/AU/MakosizerX.component
             dist/macos/MakosizerX-macOS-AU.zip
+            dist/macos/MakosizerX.pkg
           if-no-files-found: error
           retention-days: 30

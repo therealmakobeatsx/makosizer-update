@@ -50,15 +50,6 @@ public:
     PresetManager& getPresetManager() noexcept { return presetManager; }
     int getOversamplingFactor() const noexcept;
     OutputLevels getAndResetOutputLevels() noexcept;
-    int getSamplerDisplayNumber() const noexcept
-    {
-        return samplerDisplayNumber.load (std::memory_order_relaxed);
-    }
-    int getActivePadIndex() const noexcept
-    {
-        return activePadIndex.load (std::memory_order_relaxed);
-    }
-
 private:
     static ParameterState::ParameterLayout createParameterLayout();
     static void accumulatePeak (std::atomic<float>& peak, float level) noexcept;
@@ -70,11 +61,6 @@ private:
     MakosizerX::MakosizerXDSP dsp;
     std::atomic<float> leftOutputPeak { 0.0f };
     std::atomic<float> rightOutputPeak { 0.0f };
-    std::atomic<int> samplerDisplayNumber { 1 };
-    std::atomic<int> activePadIndex { -1 };
-    std::uint64_t samplerDisplaySampleCount = 0;
-    std::uint64_t padChangeSampleCount = 0;
-    std::uint32_t padRandomState = 0x6d2b79f5u;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MakosizerXAudioProcessor)
 };

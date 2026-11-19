@@ -80,10 +80,10 @@ constexpr std::array<OverlayPlacement, 2> presetFileButtonPlacements {{
 }};
 
 constexpr std::array<OverlayPlacement, 4> oversamplingPlacements {{
-    { 1291, 692, 38, 47 },
-    { 1334, 692, 38, 47 },
-    { 1377, 692, 38, 47 },
-    { 1420, 692, 38, 47 }
+    { 1275, 700, 38, 47 },
+    { 1318, 700, 38, 47 },
+    { 1361, 700, 38, 47 },
+    { 1404, 700, 38, 47 }
 }};
 
 constexpr std::array<const char*, 4> oversamplingNames {{
@@ -240,7 +240,7 @@ MakosizerXAudioProcessorEditor::MakosizerXAudioProcessorEditor (
     }
 
     // The dark LCD inset and its printed frame share the approved artwork bounds.
-    lcdDisplay.setBounds (222, 138, 706, 154);
+    lcdDisplay.setBounds (520, 128, 320, 112);
     addAndMakeVisible (lcdDisplay);
     ledMeter.setBounds (1287, 117, 178, 510);
     addAndMakeVisible (ledMeter);
@@ -281,34 +281,6 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
         17.0f, juce::Font::bold | juce::Font::italic)));
     graphics.drawText ("SX-666", 128, 614, 78, 24, juce::Justification::centredLeft);
 
-    graphics.setColour (juce::Colour (0xff170707));
-    graphics.fillRoundedRectangle (juce::Rectangle<float> (91.0f, 710.0f, 75.0f, 39.0f),
-                                   4.0f);
-    graphics.setColour (juce::Colour (0xffff4b40));
-    graphics.setFont (juce::Font (juce::FontOptions (
-        juce::Font::getDefaultMonospacedFontName(), 24.0f, juce::Font::bold)));
-    graphics.drawText (juce::String (audioProcessor.getSamplerDisplayNumber()),
-                       93, 712, 71, 34, juce::Justification::centred);
-
-    constexpr std::array<int, 4> padCentresX {{ 68, 110, 153, 196 }};
-    constexpr std::array<int, 3> padCentresY {{ 801, 844, 887 }};
-    const auto currentPad = audioProcessor.getActivePadIndex();
-    const auto activePad = currentPad < 0 ? 0 : currentPad;
-    for (int pad = 0; pad < 12; ++pad)
-    {
-        const auto x = padCentresX[static_cast<std::size_t> (pad % 4)];
-        const auto y = padCentresY[static_cast<std::size_t> (pad / 4)];
-        graphics.setColour (pad == activePad ? juce::Colour (0xffff7950).withAlpha (0.92f)
-                                              : juce::Colour (0xe0181918));
-        graphics.fillEllipse (static_cast<float> (x - 10), static_cast<float> (y - 9),
-                              20.0f, 18.0f);
-        graphics.setColour (pad == activePad ? juce::Colours::black
-                                              : juce::Colour (0xffeeece0));
-        graphics.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
-        graphics.drawText (juce::String (pad + 1), x - 12, y - 10, 24, 20,
-                           juce::Justification::centred);
-    }
-
     const auto accent = juce::Colour (0xffff5148);
     for (std::size_t i = 0; i < presetButtons.size(); ++i)
     {
@@ -318,19 +290,10 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
 
         const auto bounds = button->getBounds().toFloat().reduced (1.0f);
         const auto isSelected = button->getToggleState();
-        const auto isDeselectedInit = i == 0 && ! isSelected;
-        const auto overlayAlpha = isDeselectedInit ? 1.0f : 0.12f;
-        graphics.setColour (juce::Colours::black.withAlpha (overlayAlpha));
-        graphics.fillRoundedRectangle (bounds, 3.0f);
-        if (isDeselectedInit)
-        {
-            graphics.setColour (juce::Colour (0xff393d39));
-            graphics.fillRoundedRectangle (juce::Rectangle<float> (61.0f, 168.0f,
-                                                                     24.0f, 24.0f), 3.0f);
-            graphics.setColour (juce::Colour (0xffd0cec4));
-            graphics.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::plain)));
-            graphics.drawText ("INIT", 96, 163, 136, 34, juce::Justification::centredLeft);
-        }
+        graphics.setColour (juce::Colour (0xffd5d2c7));
+        graphics.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::plain)));
+        graphics.drawFittedText (button->getName(), button->getBounds().reduced (14, 2),
+                                 juce::Justification::centredLeft, 1);
         if (isSelected)
         {
             graphics.setColour (accent.withAlpha (0.13f));
@@ -428,7 +391,10 @@ void MakosizerXAudioProcessorEditor::updateControlReadouts()
                 text = formatFrequency (actualValue);
                 break;
             }
-            case limiterControl: text = juce::String (-0.1 - value * 11.9, 1) + " dB"; break;
+            case limiterControl: text = value <= 0.001
+                ? juce::String ("OFF")
+                : juce::String (-0.1 - value * 11.9, 1) + " dB";
+                break;
             case widthControl: text = juce::String (value * 200.0, 0) + "%"; break;
             case noiseControl: text = juce::String (value * 100.0, 0) + "%"; break;
             default: text = juce::String (value * 100.0, 0) + "%"; break;
