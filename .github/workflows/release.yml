@@ -37,7 +37,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          base_version="$(tr -d '[:space:]' < VERSION)"
+          base_version="$(tr -d '[:space:]' < VERSION.txt)"
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             echo "version=$base_version" >> "$GITHUB_OUTPUT"
@@ -131,7 +131,7 @@ jobs:
           )
           unzip -tq dist/linux/MakosizerX-Linux.zip
           tar -tzf dist/linux/MakosizerX-Linux.tar.gz \
-            | grep -q '^MakosizerX/MakosizerX.vst3/Contents/'
+            | grep '^MakosizerX/MakosizerX.vst3/Contents/' >/dev/null
           test -s dist/linux/MakosizerX-Linux.zip
           test -s dist/linux/MakosizerX-Linux.tar.gz
 

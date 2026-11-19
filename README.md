@@ -33,7 +33,7 @@ macOS AU component are available in the corresponding Actions build artifacts.
 Commit messages use Conventional
 Commits for release increments: `feat:` advances the minor version,
 `BREAKING CHANGE:` or `type!:` advances the major version, and other changes
-advance the patch version. `VERSION` provides the initial version baseline.
+advance the patch version. `VERSION.txt` provides the initial version baseline.
 
 The release is published unsigned when signing credentials are not configured.
 Optional GitHub Actions secrets are `WINDOWS_CERTIFICATE_BASE64` and
