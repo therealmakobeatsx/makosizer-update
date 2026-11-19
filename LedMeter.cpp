@@ -29,15 +29,9 @@ juce::Colour colourForSegment (int segment)
 void drawChannel (juce::Graphics& graphics, juce::Rectangle<float> bounds,
                   const char* label, float level, float peak)
 {
-    constexpr float labelHeight = 16.0f;
+    juce::ignoreUnused (label);
     constexpr float segmentGap = 2.0f;
-
-    graphics.setColour (juce::Colour (0xff9fa995));
-    graphics.setFont (11.0f);
-    graphics.drawFittedText (label, bounds.removeFromTop (labelHeight).toNearestInt(),
-                             juce::Justification::centred, 1);
-
-    auto track = bounds.reduced (3.0f, 1.0f);
+    auto track = bounds;
     if (track.isEmpty())
         return;
 
@@ -63,7 +57,7 @@ void drawChannel (juce::Graphics& graphics, juce::Rectangle<float> bounds,
 
         if (segment < fullSegments)
         {
-            graphics.setColour (colour);
+            graphics.setColour (colour.withAlpha (0.92f));
         }
         else if (segment == fullSegments && partialSegment > 0.0f)
         {
@@ -71,15 +65,16 @@ void drawChannel (juce::Graphics& graphics, juce::Rectangle<float> bounds,
         }
         else
         {
-            graphics.setColour (colour.withAlpha (0.18f));
+            continue;
         }
 
-        graphics.fillRoundedRectangle (segmentBounds, 1.5f);
+        graphics.fillRoundedRectangle (segmentBounds.reduced (1.0f, 2.0f), 1.5f);
 
         if (segment == peakSegment && peak > 0.0f)
         {
-            graphics.setColour (juce::Colour (0xffe5e9d7));
-            graphics.drawRoundedRectangle (segmentBounds.reduced (0.5f), 1.0f, 1.0f);
+            graphics.setColour (juce::Colour (0xffe5e9d7).withAlpha (0.8f));
+            graphics.drawRoundedRectangle (segmentBounds.reduced (1.0f, 2.0f),
+                                           1.0f, 1.0f);
         }
     }
 }
@@ -87,7 +82,8 @@ void drawChannel (juce::Graphics& graphics, juce::Rectangle<float> bounds,
 
 LedMeter::LedMeter()
 {
-    setOpaque (true);
+    setOpaque (false);
+    setInterceptsMouseClicks (false, false);
     lastUpdateTimeMs = juce::Time::getMillisecondCounterHiRes();
     startTimerHz (30);
 }
@@ -154,28 +150,12 @@ void LedMeter::timerCallback()
 
 void LedMeter::paint (juce::Graphics& graphics)
 {
-    auto bounds = getLocalBounds().toFloat();
-    graphics.fillAll (juce::Colour (0xff252a25));
-
-    graphics.setColour (juce::Colour (0xff737b6d));
-    graphics.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
-
-    auto face = bounds.reduced (5.0f);
-    graphics.setColour (juce::Colour (0xff101510));
-    graphics.fillRoundedRectangle (face, 3.0f);
-
-    auto channels = face.reduced (4.0f, 4.0f);
-    const auto channelGap = 8.0f;
-    const auto channelWidth = (channels.getWidth() - channelGap) * 0.5f;
-    if (channelWidth <= 0.0f)
-        return;
-
-    auto leftBounds = juce::Rectangle<float> (channels.getX(), channels.getY(),
-                                               channelWidth, channels.getHeight());
-    auto rightBounds = juce::Rectangle<float> (channels.getX() + channelWidth + channelGap,
-                                                channels.getY(), channelWidth,
-                                                channels.getHeight());
-
-    drawChannel (graphics, leftBounds, "L", leftChannel.level, leftChannel.peak);
-    drawChannel (graphics, rightBounds, "R", rightChannel.level, rightChannel.peak);
+    const auto height = static_cast<float> (getHeight());
+    const auto trackHeight = juce::jmax (0.0f, height - 44.0f);
+    drawChannel (graphics,
+                 { 11.0f, 25.0f, 74.0f, trackHeight },
+                 "L", leftChannel.level, leftChannel.peak);
+    drawChannel (graphics,
+                 { 99.0f, 25.0f, 74.0f, trackHeight },
+                 "R", rightChannel.level, rightChannel.peak);
 }

@@ -71,6 +71,7 @@ bool limiterOffPreservesOverrangeSignal()
 bool limiterIncreasesWithControl()
 {
     std::array<float, 3> peaks {};
+    std::array<float, 3> gainReductions {};
     std::array<float, 3> controls {{ 0.0f, 0.5f, 1.0f }};
 
     for (std::size_t i = 0; i < controls.size(); ++i)
@@ -86,16 +87,20 @@ bool limiterIncreasesWithControl()
         float* channels[] { samples.data() };
         dsp.process (channels, 1, static_cast<int> (samples.size()), parameters);
         peaks[i] = peakMagnitude (samples);
+        gainReductions[i] = dsp.getLimiterGainReductionDb();
     }
 
-    return peaks[0] >= peaks[1] && peaks[1] >= peaks[2] && peaks[2] <= 0.26f;
+    return peaks[0] >= peaks[1] && peaks[1] >= peaks[2] && peaks[2] <= 0.26f
+           && gainReductions[0] <= gainReductions[1]
+           && gainReductions[1] <= gainReductions[2]
+           && gainReductions[2] > gainReductions[0] + 3.0f;
 }
 
 bool compressorControlIsClearlyAudible()
 {
-    std::array<float, 3> peaks {};
-    std::array<float, 3> rms {};
-    std::array<float, 3> controls {{ 0.0f, 0.5f, 1.0f }};
+    std::array<float, 4> peaks {};
+    std::array<float, 4> rms {};
+    std::array<float, 4> controls {{ 0.0f, 0.1f, 0.5f, 1.0f }};
 
     for (std::size_t i = 0; i < controls.size(); ++i)
     {
@@ -115,14 +120,16 @@ bool compressorControlIsClearlyAudible()
         rms[i] = static_cast<float> (std::sqrt (sumSquares / samples.size()));
     }
 
-    const auto fullRangeDifference = std::abs (rms[0] - rms[2]);
+    const auto fullRangeDifference = std::abs (rms[0] - rms[3]);
+    const auto smallRangeDifference = std::abs (rms[1] - rms[0]);
     const auto metricsFinite = std::all_of (peaks.begin(), peaks.end(),
                                             [] (float value) { return std::isfinite (value); })
         && std::all_of (rms.begin(), rms.end(),
                         [] (float value) { return std::isfinite (value); });
     return metricsFinite
            && fullRangeDifference > rms[0] * 0.08f
-           && std::abs (peaks[0] - peaks[2]) > 0.05f;
+           && smallRangeDifference > rms[0] * 0.01f
+           && std::abs (peaks[0] - peaks[3]) > 0.05f;
 }
 
 bool allOversamplingModesAreStable()

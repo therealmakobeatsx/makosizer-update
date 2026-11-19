@@ -23,11 +23,8 @@ public:
 
 private:
     void sliderValueChanged (juce::Slider* slider) override;
-    void sliderDragStarted (juce::Slider* slider) override;
-    void sliderDragEnded (juce::Slider* slider) override;
     void timerCallback() override;
     void updateLCDDisplay();
-    void updateControlReadouts();
     void updatePresetSelection();
     void updateOversamplingSelection();
     void loadPreset (const juce::String& presetName);
@@ -43,7 +40,6 @@ private:
     juce::Image backgroundImage;
     MakosizerXLookAndFeel rotaryLookAndFeel;
     std::array<juce::Slider, 14> sliders;
-    std::array<juce::Label, 14> controlReadouts;
     std::array<std::unique_ptr<SliderAttachment>, 14> attachments;
     std::array<std::unique_ptr<juce::Button>, 9> presetButtons;
     std::array<std::unique_ptr<juce::Button>, 2> presetFileButtons;
@@ -52,6 +48,5 @@ private:
     LCDDisplay lcdDisplay;
     LedMeter ledMeter;
     float outputLevel = 0.0f;
-    bool sliderGestureActive = false;
     bool presetChangeActive = false;
 };

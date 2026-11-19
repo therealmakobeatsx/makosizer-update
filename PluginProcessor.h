@@ -49,6 +49,10 @@ public:
     const ParameterState& getParameterState() const noexcept { return parameterState; }
     PresetManager& getPresetManager() noexcept { return presetManager; }
     int getOversamplingFactor() const noexcept;
+    float getLimiterGainReductionDb() const noexcept
+    {
+        return dsp.getLimiterGainReductionDb();
+    }
     OutputLevels getAndResetOutputLevels() noexcept;
 private:
     static ParameterState::ParameterLayout createParameterLayout();

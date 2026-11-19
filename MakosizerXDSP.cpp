@@ -83,6 +83,7 @@ void MakosizerXDSP::reset() noexcept
 
     writePosition = 0;
     limiterWritePosition = 0;
+    limiterGainReductionDb.store (0.0f, std::memory_order_relaxed);
     lastOversamplingIndex = -1;
     for (auto& processor : oversamplingProcessors)
         if (processor != nullptr)
@@ -235,9 +236,9 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
         static_cast<float> (-twoPi) * vinylCutoff / sampleRate);
     const auto compressorAttack = std::exp (-1.0f / (0.006f * sampleRate));
     const auto compressorRelease = std::exp (-1.0f / (0.145f * sampleRate));
-    const auto compressorRatio = 2.5f + comp * 11.5f;
-    const auto compressorThreshold = 0.38f - comp * 0.28f;
-    const auto compressorMakeup = 1.0f + comp * 0.85f;
+    const auto compressorRatio = 3.0f + comp * 13.0f;
+    const auto compressorThreshold = 0.34f - comp * 0.28f;
+    const auto compressorMakeup = 1.0f + comp * 0.55f;
     const auto fixedDelay = static_cast<float> (
         std::max (1, static_cast<int> (std::round (currentSampleRate * 0.005))));
     const auto dryDelay = static_cast<float> (latencySamples);
@@ -255,6 +256,7 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
     const auto limiterThreshold = std::pow (10.0f, limiterThresholdDb / 20.0f);
     const auto limiterAttack = std::exp (-1.0f / (0.002f * sampleRate));
     const auto limiterRelease = std::exp (-1.0f / (0.120f * sampleRate));
+    auto maximumLimiterGainReductionDb = 0.0f;
 
     auto blockOffset = 0;
     while (blockOffset < numSamples)
@@ -448,7 +450,13 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                             0.0f, -std::max (0.0f, overshootDb));
                         const auto targetGain = std::pow (10.0f, targetGainDb / 20.0f);
                         output *= targetGain;
+                        maximumLimiterGainReductionDb = std::max (
+                            maximumLimiterGainReductionDb, -targetGainDb);
                     }
+                    if (std::abs (output) > limiterCeiling)
+                        maximumLimiterGainReductionDb = std::max (
+                            maximumLimiterGainReductionDb,
+                            20.0f * std::log10 (std::abs (output) / limiterCeiling));
                     output = std::clamp (output, -limiterCeiling, limiterCeiling);
                 }
 
@@ -462,5 +470,8 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
 
         blockOffset += blockSize;
     }
+
+    limiterGainReductionDb.store (maximumLimiterGainReductionDb,
+                                  std::memory_order_relaxed);
 }
 }

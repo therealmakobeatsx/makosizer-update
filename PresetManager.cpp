@@ -30,27 +30,37 @@ constexpr std::array<FactoryPreset, 8> factoryPresets {{
       {{ 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,
          0.00f, 20.0f, 20000.0f, 0.00f, 1.00f, 1.00f }} },
     { "SP303 VIBES", "Sampler-style crunch with a compact, punchy tone.",
-      {{ 0.22f, 0.35f, 0.30f, 0.08f, 0.08f, 0.18f, 0.20f, 0.68f,
+      {{ 0.22f, 0.35f, 0.00f, 0.08f, 0.08f, 0.18f, 0.20f, 0.68f,
          0.30f, 35.0f, 14500.0f, 0.14f, 1.00f, 1.00f }} },
     { "DILLA DUST", "A softened beat with pronounced dust and surface texture.",
-      {{ 0.12f, 0.22f, 0.10f, 0.12f, 0.08f, 0.42f, 0.80f, 0.24f,
+      {{ 0.12f, 0.22f, 0.00f, 0.12f, 0.08f, 0.42f, 0.80f, 0.24f,
          0.18f, 30.0f, 12500.0f, 0.08f, 1.00f, 1.00f }} },
     { "MPC CRUNCH", "Firm saturation, crushing, and stronger limiting.",
-      {{ 0.42f, 0.12f, 0.75f, 0.03f, 0.02f, 0.10f, 0.05f, 0.85f,
+      {{ 0.42f, 0.12f, 0.00f, 0.03f, 0.02f, 0.10f, 0.05f, 0.85f,
          0.55f, 30.0f, 18000.0f, 0.68f, 1.00f, 1.00f }} },
     { "CASSETTE MELT", "Soft tape wear, modulation, and rounded transients.",
-      {{ 0.22f, 0.55f, 0.35f, 0.28f, 0.32f, 0.28f, 0.36f, 0.38f,
+      {{ 0.22f, 0.55f, 0.00f, 0.28f, 0.32f, 0.28f, 0.36f, 0.38f,
          0.28f, 35.0f, 12500.0f, 0.18f, 0.95f, 1.00f }} },
     { "LOFI RADIO", "Narrower, noisy tape character with softened highs.",
-      {{ 0.28f, 0.40f, 0.32f, 0.28f, 0.18f, 0.60f, 0.50f, 0.35f,
+      {{ 0.28f, 0.40f, 0.00f, 0.28f, 0.18f, 0.60f, 0.50f, 0.35f,
          0.35f, 120.0f, 8000.0f, 0.25f, 0.85f, 1.00f }} },
     { "UNDERGROUND", "Heavy degradation with unstable motion and texture.",
-      {{ 0.72f, 0.45f, 0.95f, 0.40f, 0.40f, 0.55f, 0.65f, 0.82f,
+      {{ 0.72f, 0.45f, 0.00f, 0.40f, 0.40f, 0.55f, 0.65f, 0.82f,
          0.52f, 70.0f, 10000.0f, 0.65f, 0.75f, 1.00f }} },
     { "DIRTY MASTER", "A forceful, saturated master with firm compression.",
-      {{ 0.55f, 0.32f, 0.55f, 0.12f, 0.10f, 0.12f, 0.08f, 0.48f,
+      {{ 0.55f, 0.32f, 0.00f, 0.12f, 0.10f, 0.12f, 0.08f, 0.48f,
          0.72f, 30.0f, 13500.0f, 0.72f, 1.00f, 1.00f }} }
 }};
+
+constexpr bool factoryPresetsDisableDestroy()
+{
+    for (const auto& preset : factoryPresets)
+        if (preset.values[2] > 0.0f || preset.values[2] < 0.0f)
+            return false;
+
+    return true;
+}
+static_assert (factoryPresetsDisableDestroy());
 
 juce::Result validatePresetState (
     juce::ValueTree& state,

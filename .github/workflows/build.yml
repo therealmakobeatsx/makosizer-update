@@ -31,8 +31,10 @@ jobs:
           ctest --test-dir build --output-on-failure
       - uses: actions/upload-artifact@v4
         with:
-          name: MakosizerX-Linux-VST3
-          path: build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+          name: MakosizerX-Linux-Plugins
+          path: |
+            build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+            build/MakosizerX_artefacts/Release/Standalone/MakosizerX
           if-no-files-found: error
           retention-days: 30
 
@@ -40,10 +42,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure and build VST3
+      - name: Configure and build VST3 and Standalone
         run: |
           cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release --target MakosizerX_VST3 --parallel 2
+          cmake --build build --config Release --target MakosizerX_VST3 MakosizerX_Standalone --parallel 2
       - name: Run DSP validation
         shell: pwsh
         run: |
@@ -83,9 +85,10 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         with:
-          name: MakosizerX-Windows-VST3
+          name: MakosizerX-Windows-Plugins
           path: |
             build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+            build/MakosizerX_artefacts/Release/Standalone/MakosizerX*
             dist/windows/MakosizerX-Windows-VST3.zip
             dist/windows/MakosizerX-Setup.exe
           if-no-files-found: error
@@ -95,12 +98,13 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
-      - name: Configure and build VST3 and AU
+      - name: Configure and build VST3, AU, and Standalone
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          cmake --build build --config Release --target MakosizerX_VST3 MakosizerX_AU --parallel 2
+          cmake --build build --config Release --target MakosizerX_VST3 MakosizerX_AU \
+            MakosizerX_Standalone --parallel 2
       - name: Run DSP validation
         run: |
           cmake --build build --config Release --target MakosizerXDSPTests --parallel 2
@@ -149,9 +153,10 @@ jobs:
           test -s dist/macos/MakosizerX.pkg
       - uses: actions/upload-artifact@v4
         with:
-          name: MakosizerX-macOS-VST3
+          name: MakosizerX-macOS-Plugins
           path: |
             build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+            build/MakosizerX_artefacts/Release/Standalone/MakosizerX*
             dist/macos/MakosizerX-macOS-VST3.zip
           if-no-files-found: error
           retention-days: 30

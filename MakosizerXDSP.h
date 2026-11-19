@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -39,6 +40,10 @@ public:
                   const DSPParameters& parameters) noexcept;
 
     int getLatencySamples() const noexcept { return latencySamples; }
+    float getLimiterGainReductionDb() const noexcept
+    {
+        return limiterGainReductionDb.load (std::memory_order_relaxed);
+    }
 
 private:
     struct ChannelState
@@ -79,6 +84,7 @@ private:
     int maximumOversamplingLatencySamples = 0;
     int lastOversamplingIndex = -1;
     std::size_t limiterWritePosition = 0;
+    std::atomic<float> limiterGainReductionDb { 0.0f };
     int latencySamples = 220;
 };
 }

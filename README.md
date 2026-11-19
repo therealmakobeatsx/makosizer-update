@@ -37,4 +37,5 @@ usage, with the highest cost at 8x.
 
 Factory presets are available in the editor. Use **LOAD** and **SAVE** to
 import or export `.makopreset` files. The **CUSTOM** slot retains its in-memory
-settings while another factory preset is selected.
+settings while another factory preset is selected. Factory presets leave
+Destroy at zero; add it manually when you want extra degradation.

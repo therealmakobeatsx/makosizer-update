@@ -8,13 +8,10 @@ public:
     struct State
     {
         juce::String presetName { "INIT" };
-        float drive = 0.0f;
-        float crush = 0.0f;
-        float noise = 0.0f;
-        float wow = 0.0f;
-        float flutter = 0.0f;
-        float outputLevel = 0.0f;
+        juce::String sampleRate { "44.1 kHz" };
         int oversamplingFactor = 1;
+        juce::String bitDepth { "32-bit float" };
+        juce::String status { "READY" };
     };
 
     LCDDisplay();
@@ -25,7 +22,5 @@ public:
     void paint (juce::Graphics& graphics) override;
 
 private:
-    static float clampParameter (float value) noexcept;
-
     State state;
 };
