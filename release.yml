@@ -1,0 +1,70 @@
+name: MakosizerX Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      version: ${{ github.ref_name }}
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-assets
+          path: release-assets/windows
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-assets
+          path: release-assets/macos
+
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            release-assets/windows/MakosizerX-Setup.exe
+            release-assets/windows/MakosizerX-Windows-VST3.zip
+            release-assets/macos/MakosizerX.pkg
+            release-assets/macos/MakosizerX-macOS-VST3.zip
+            release-assets/macos/MakosizerX-macOS-AU.zip
+          )
+          for artifact in "${required[@]}"; do
+            test -s "$artifact" || { echo "Missing release artifact: $artifact" >&2; exit 1; }
+          done
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          assets=(
+            release-assets/windows/MakosizerX-Setup.exe
+            release-assets/windows/MakosizerX-Windows-VST3.zip
+            release-assets/macos/MakosizerX.pkg
+            release-assets/macos/MakosizerX-macOS-VST3.zip
+            release-assets/macos/MakosizerX-macOS-AU.zip
+          )
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          fi

@@ -1,0 +1,139 @@
+name: MakosizerX platform builds
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Product version, optionally prefixed with v
+        required: false
+        type: string
+        default: "1.0.0"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows VST3 and installer
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target MakosizerX_VST3 --parallel
+
+      - name: Package Windows release
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'build\MakosizerX_artefacts\Release\VST3\MakosizerX.vst3'
+          if (-not (Test-Path -LiteralPath $bundle -PathType Container)) {
+            throw "Expected VST3 bundle was not built: $bundle"
+          }
+
+          $version = $env:RELEASE_VERSION
+          if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+          if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version: $version"
+          }
+          $env:MAKOSIZERX_VERSION = $version
+          $env:MAKOSIZERX_VST3_PATH = (Resolve-Path -LiteralPath $bundle).Path
+
+          $output = Join-Path $env:GITHUB_WORKSPACE 'dist\windows'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          Compress-Archive -Path $bundle -DestinationPath (Join-Path $output 'MakosizerX-Windows-VST3.zip') -CompressionLevel Optimal -Force
+
+          choco install innosetup --yes --no-progress
+          $installer = Join-Path $env:GITHUB_WORKSPACE 'packaging\windows\MakosizerX.iss'
+          & iscc.exe $installer "/O$output"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $output 'MakosizerX-Setup.exe') -PathType Leaf)) {
+            throw 'Inno Setup did not create MakosizerX-Setup.exe'
+          }
+
+      - name: Upload Windows VST3 bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows-vst3
+          path: build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows installer and VST3 archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-assets
+          path: |
+            dist/windows/MakosizerX-Setup.exe
+            dist/windows/MakosizerX-Windows-VST3.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    name: macOS VST3, AU, and installer
+    runs-on: macos-15-intel
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Configure universal build
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Build VST3 and AU
+        run: cmake --build build --target MakosizerX_VST3 MakosizerX_AU --parallel
+
+      - name: Package macOS release
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          version="${RELEASE_VERSION#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid release version: $version" >&2
+            exit 1
+          }
+          bash packaging/macos/package-macos.sh \
+            "$version" \
+            "$GITHUB_WORKSPACE/build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3" \
+            "$GITHUB_WORKSPACE/build/MakosizerX_artefacts/Release/AU/MakosizerX.component" \
+            "$GITHUB_WORKSPACE/dist/macos"
+
+      - name: Upload macOS VST3 bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-macos-vst3
+          path: build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload macOS AU component
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-macos-au
+          path: build/MakosizerX_artefacts/Release/AU/MakosizerX.component
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload macOS installer and plugin archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-assets
+          path: |
+            dist/macos/MakosizerX.pkg
+            dist/macos/MakosizerX-macOS-VST3.zip
+            dist/macos/MakosizerX-macOS-AU.zip
+          if-no-files-found: error
+          retention-days: 30
