@@ -37,18 +37,18 @@ juce_generate_juce_header(MakosizerX)
 
 juce_add_binary_data(MakosizerXAssets
     SOURCES
-        Assets/makosizerx_background.png
+        makosizerx_background.png
 )
 
 target_sources(MakosizerX
     PRIVATE
-        DSP/MakosizerXDSP.cpp
-        GUI/LCDDisplay.cpp
-        GUI/LedMeter.cpp
-        GUI/MakosizerXLookAndFeel.cpp
+        MakosizerXDSP.cpp
+        LCDDisplay.cpp
+        LedMeter.cpp
+        MakosizerXLookAndFeel.cpp
         PresetManager.cpp
-        Source/PluginEditor.cpp
-        Source/PluginProcessor.cpp
+        PluginEditor.cpp
+        PluginProcessor.cpp
 )
 
 target_compile_features(MakosizerX PRIVATE cxx_std_17)

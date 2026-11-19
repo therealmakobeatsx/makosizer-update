@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../GUI/LCDDisplay.h"
-#include "../GUI/LedMeter.h"
-#include "../GUI/MakosizerXLookAndFeel.h"
+#include "LCDDisplay.h"
+#include "LedMeter.h"
+#include "MakosizerXLookAndFeel.h"
 
 #include <JuceHeader.h>
 

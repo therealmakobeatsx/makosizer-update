@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../DSP/MakosizerXDSP.h"
-#include "../PresetManager.h"
+#include "MakosizerXDSP.h"
+#include "PresetManager.h"
 
 #include <JuceHeader.h>
 
