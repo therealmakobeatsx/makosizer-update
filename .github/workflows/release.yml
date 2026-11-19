@@ -108,7 +108,8 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DMAKOSIZERX_VERSION="$VERSION" -DBUILD_TESTING=ON
           cmake --build build --config Release \
-            --target MakosizerX_VST3 MakosizerX_Standalone MakosizerXDSPTests --parallel 2
+            --target MakosizerX_VST3 MakosizerX_Standalone MakosizerXDSPTests \
+            MakosizerXUITests --parallel 2
           ctest --test-dir build --output-on-failure
 
       - name: Package Linux downloads
@@ -169,7 +170,8 @@ jobs:
           cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release `
             -DMAKOSIZERX_VERSION="$env:VERSION" -DBUILD_TESTING=ON
           cmake --build build --config Release `
-            --target MakosizerX_VST3 MakosizerX_Standalone MakosizerXDSPTests --parallel 2
+            --target MakosizerX_VST3 MakosizerX_Standalone MakosizerXDSPTests `
+            MakosizerXUITests --parallel 2
           ctest --test-dir build -C Release --output-on-failure
 
       - name: Package Windows downloads and optional signing
@@ -297,8 +299,8 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DMAKOSIZERX_VERSION="$VERSION" -DBUILD_TESTING=ON
           cmake --build build --config Release \
-            --target MakosizerX_VST3 MakosizerX_AU MakosizerX_Standalone MakosizerXDSPTests \
-            --parallel 2
+            --target MakosizerX_VST3 MakosizerX_AU MakosizerX_Standalone \
+            MakosizerXDSPTests MakosizerXUITests --parallel 2
           ctest --test-dir build --output-on-failure
 
       - name: Sign macOS bundles when credentials are available

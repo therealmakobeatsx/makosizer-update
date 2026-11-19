@@ -10,9 +10,11 @@ JUCE 8.0.6 is fetched by CMake. Install a C++17 compiler and CMake 3.22 or
 newer, then build the Release configuration:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build --config Release \
-  --target MakosizerX_VST3 MakosizerX_Standalone
+  --target MakosizerX_VST3 MakosizerX_Standalone \
+  MakosizerXDSPTests MakosizerXUITests
+ctest --test-dir build --output-on-failure
 ```
 
 On macOS, also build the Audio Unit with

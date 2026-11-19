@@ -88,4 +88,14 @@ if(BUILD_TESTING)
     target_compile_definitions(MakosizerXDSPTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
     target_link_libraries(MakosizerXDSPTests PRIVATE juce::juce_dsp)
     add_test(NAME MakosizerXDSPTests COMMAND MakosizerXDSPTests)
+
+    add_executable(MakosizerXUITests
+        tests/MakosizerXLookAndFeelTests.cpp
+        MakosizerXLookAndFeel.cpp
+    )
+    target_compile_features(MakosizerXUITests PRIVATE cxx_std_17)
+    target_include_directories(MakosizerXUITests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(MakosizerXUITests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(MakosizerXUITests PRIVATE juce::juce_gui_basics MakosizerXAssets)
+    add_test(NAME MakosizerXUITests COMMAND MakosizerXUITests)
 endif()
