@@ -30,7 +30,8 @@ void LCDDisplay::setState (State newState)
         && newState.noise == state.noise
         && newState.wow == state.wow
         && newState.flutter == state.flutter
-        && newState.outputLevel == state.outputLevel)
+        && newState.outputLevel == state.outputLevel
+        && newState.oversamplingFactor == state.oversamplingFactor)
         return;
 
     state = std::move (newState);
@@ -72,8 +73,12 @@ void LCDDisplay::paint (juce::Graphics& g)
 
     g.setColour (midGreen);
     g.setFont (juce::jmax (10.0f, header.getHeight() * 0.36f));
-    g.drawFittedText ("PRESET", header.removeFromTop (header.getHeight() / 2),
+    auto headerLabels = header.removeFromTop (header.getHeight() / 2);
+    auto oversamplingLabel = headerLabels.removeFromRight (headerLabels.getWidth() / 3);
+    g.drawFittedText ("PRESET", headerLabels,
                       juce::Justification::centredLeft, 1);
+    g.drawFittedText ("OS " + juce::String (state.oversamplingFactor) + "x",
+                      oversamplingLabel, juce::Justification::centredRight, 1);
 
     g.setColour (brightGreen);
     g.setFont (juce::jmax (12.0f, header.getHeight() * 0.72f));

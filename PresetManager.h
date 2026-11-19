@@ -30,4 +30,7 @@ public:
 
 private:
     ParameterState& parameterState;
+    juce::ValueTree customPresetState;
+
+    void rememberCustomPreset();
 };

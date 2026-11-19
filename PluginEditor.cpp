@@ -45,6 +45,23 @@ struct OverlayPlacement
     int height;
 };
 
+constexpr std::array<OverlayPlacement, 14> readoutPlacements {{
+    { 316, 484, 74, 28 },
+    { 490, 484, 74, 28 },
+    { 707, 608, 102, 38 },
+    { 954, 484, 74, 28 },
+    { 1127, 484, 74, 28 },
+    { 316, 678, 74, 28 },
+    { 490, 678, 74, 28 },
+    { 954, 678, 74, 28 },
+    { 1127, 678, 74, 28 },
+    { 322, 879, 70, 27 },
+    { 470, 879, 70, 27 },
+    { 640, 879, 70, 27 },
+    { 966, 879, 70, 27 },
+    { 1126, 879, 70, 27 }
+}};
+
 constexpr std::array<OverlayPlacement, 9> presetPlacements {{
     { 56, 163, 180, 34 },
     { 56, 201, 180, 34 },
@@ -63,10 +80,10 @@ constexpr std::array<OverlayPlacement, 2> presetFileButtonPlacements {{
 }};
 
 constexpr std::array<OverlayPlacement, 4> oversamplingPlacements {{
-    { 1295, 694, 35, 51 },
-    { 1337, 694, 35, 51 },
-    { 1379, 694, 35, 51 },
-    { 1422, 694, 35, 51 }
+    { 1291, 692, 38, 47 },
+    { 1334, 692, 38, 47 },
+    { 1377, 692, 38, 47 },
+    { 1420, 692, 38, 47 }
 }};
 
 constexpr std::array<const char*, 4> oversamplingNames {{
@@ -145,6 +162,17 @@ MakosizerXAudioProcessorEditor::MakosizerXAudioProcessorEditor (
         addAndMakeVisible (slider);
         slider.addListener (this);
 
+        auto& readout = controlReadouts[i];
+        readout.setJustificationType (juce::Justification::centred);
+        readout.setColour (juce::Label::textColourId, juce::Colour (0xffe6e5dc));
+        readout.setColour (juce::Label::backgroundColourId, juce::Colour (0xff080a08));
+        readout.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::plain)));
+        readout.setOpaque (true);
+        readout.setBounds (readoutPlacements[i].x, readoutPlacements[i].y,
+                           readoutPlacements[i].width, readoutPlacements[i].height);
+        readout.setInterceptsMouseClicks (false, false);
+        addAndMakeVisible (readout);
+
         attachments[i] = std::make_unique<SliderAttachment> (
             processor.getParameterState(), placement.parameterId, slider);
     }
@@ -211,14 +239,15 @@ MakosizerXAudioProcessorEditor::MakosizerXAudioProcessorEditor (
         oversamplingButtons[i] = std::move (button);
     }
 
-    // LOCKED overlays: change these bounds only with an explicit artwork/layout revision.
-    lcdDisplay.setBounds (995, 170, 233, 122);
+    // The dark LCD inset and its printed frame share the approved artwork bounds.
+    lcdDisplay.setBounds (222, 138, 706, 154);
     addAndMakeVisible (lcdDisplay);
     ledMeter.setBounds (1287, 117, 178, 510);
     addAndMakeVisible (ledMeter);
     // LOCKED: Match the PNG's native dimensions to preserve its 3:2 aspect ratio.
     setSize (1536, 1024);
     updateLCDDisplay();
+    updateControlReadouts();
     updateOversamplingSelection();
     startTimerHz (30);
 }
@@ -241,6 +270,45 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
     else
         graphics.fillAll (juce::Colour (0xff202020));
 
+    graphics.setColour (juce::Colour (0xf2101110));
+    graphics.fillRoundedRectangle (juce::Rectangle<float> (31.0f, 609.0f, 202.0f, 44.0f),
+                                   3.0f);
+    graphics.setColour (juce::Colour (0xffc7c4b8));
+    graphics.setFont (juce::Font (juce::FontOptions (
+        18.0f, juce::Font::bold | juce::Font::italic)));
+    graphics.drawText ("MKBTS", 39, 614, 83, 24, juce::Justification::centredLeft);
+    graphics.setFont (juce::Font (juce::FontOptions (
+        17.0f, juce::Font::bold | juce::Font::italic)));
+    graphics.drawText ("SX-666", 128, 614, 78, 24, juce::Justification::centredLeft);
+
+    graphics.setColour (juce::Colour (0xff170707));
+    graphics.fillRoundedRectangle (juce::Rectangle<float> (91.0f, 710.0f, 75.0f, 39.0f),
+                                   4.0f);
+    graphics.setColour (juce::Colour (0xffff4b40));
+    graphics.setFont (juce::Font (juce::FontOptions (
+        juce::Font::getDefaultMonospacedFontName(), 24.0f, juce::Font::bold)));
+    graphics.drawText (juce::String (audioProcessor.getSamplerDisplayNumber()),
+                       93, 712, 71, 34, juce::Justification::centred);
+
+    constexpr std::array<int, 4> padCentresX {{ 68, 110, 153, 196 }};
+    constexpr std::array<int, 3> padCentresY {{ 801, 844, 887 }};
+    const auto currentPad = audioProcessor.getActivePadIndex();
+    const auto activePad = currentPad < 0 ? 0 : currentPad;
+    for (int pad = 0; pad < 12; ++pad)
+    {
+        const auto x = padCentresX[static_cast<std::size_t> (pad % 4)];
+        const auto y = padCentresY[static_cast<std::size_t> (pad / 4)];
+        graphics.setColour (pad == activePad ? juce::Colour (0xffff7950).withAlpha (0.92f)
+                                              : juce::Colour (0xe0181918));
+        graphics.fillEllipse (static_cast<float> (x - 10), static_cast<float> (y - 9),
+                              20.0f, 18.0f);
+        graphics.setColour (pad == activePad ? juce::Colours::black
+                                              : juce::Colour (0xffeeece0));
+        graphics.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
+        graphics.drawText (juce::String (pad + 1), x - 12, y - 10, 24, 20,
+                           juce::Justification::centred);
+    }
+
     const auto accent = juce::Colour (0xffff5148);
     for (std::size_t i = 0; i < presetButtons.size(); ++i)
     {
@@ -250,15 +318,31 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
 
         const auto bounds = button->getBounds().toFloat().reduced (1.0f);
         const auto isSelected = button->getToggleState();
-        const auto overlayAlpha = i == 0 && ! isSelected ? 0.72f : 0.12f;
+        const auto isDeselectedInit = i == 0 && ! isSelected;
+        const auto overlayAlpha = isDeselectedInit ? 1.0f : 0.12f;
         graphics.setColour (juce::Colours::black.withAlpha (overlayAlpha));
         graphics.fillRoundedRectangle (bounds, 3.0f);
+        if (isDeselectedInit)
+        {
+            graphics.setColour (juce::Colour (0xff393d39));
+            graphics.fillRoundedRectangle (juce::Rectangle<float> (61.0f, 168.0f,
+                                                                     24.0f, 24.0f), 3.0f);
+            graphics.setColour (juce::Colour (0xffd0cec4));
+            graphics.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::plain)));
+            graphics.drawText ("INIT", 96, 163, 136, 34, juce::Justification::centredLeft);
+        }
         if (isSelected)
         {
             graphics.setColour (accent.withAlpha (0.13f));
             graphics.fillRoundedRectangle (bounds, 3.0f);
             graphics.setColour (accent.withAlpha (0.78f));
             graphics.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+            graphics.setColour (accent);
+            graphics.fillRoundedRectangle (
+                juce::Rectangle<float> (bounds.getX() - 4.0f,
+                                        bounds.getCentreY() - 10.0f,
+                                        4.0f, 20.0f),
+                2.0f);
         }
     }
 
@@ -268,7 +352,7 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
             continue;
 
         const auto bounds = button->getBounds().toFloat().reduced (1.0f);
-        graphics.setColour (juce::Colours::black.withAlpha (0.72f));
+        graphics.setColour (juce::Colours::black);
         graphics.fillRoundedRectangle (bounds, 3.0f);
         if (button->getToggleState())
         {
@@ -277,20 +361,34 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
             graphics.setColour (accent.withAlpha (0.95f));
             graphics.drawRoundedRectangle (bounds, 3.0f, 1.5f);
         }
+        graphics.setColour (juce::Colour (0xffe6e5dc));
+        graphics.setFont (juce::Font (juce::FontOptions (16.0f, juce::Font::plain)));
+        graphics.drawFittedText (button->getName(), button->getBounds(),
+                                 juce::Justification::centred, 1);
     }
 }
 
 void MakosizerXAudioProcessorEditor::sliderValueChanged (juce::Slider* slider)
 {
     juce::ignoreUnused (slider);
+    if (! presetChangeActive)
+        audioProcessor.getPresetManager().markCurrentPresetCustom();
     updateLCDDisplay();
+    updateControlReadouts();
 }
 
 void MakosizerXAudioProcessorEditor::sliderDragStarted (juce::Slider* slider)
 {
     juce::ignoreUnused (slider);
+    sliderGestureActive = true;
     audioProcessor.getPresetManager().markCurrentPresetCustom();
     updateLCDDisplay();
+}
+
+void MakosizerXAudioProcessorEditor::sliderDragEnded (juce::Slider* slider)
+{
+    juce::ignoreUnused (slider);
+    sliderGestureActive = false;
 }
 
 void MakosizerXAudioProcessorEditor::timerCallback()
@@ -298,8 +396,45 @@ void MakosizerXAudioProcessorEditor::timerCallback()
     const auto levels = audioProcessor.getAndResetOutputLevels();
     ledMeter.setLevels (levels.left, levels.right);
     outputLevel = juce::jmax (levels.left, levels.right);
+    repaint();
     updateLCDDisplay();
     updateOversamplingSelection();
+}
+
+void MakosizerXAudioProcessorEditor::updateControlReadouts()
+{
+    const auto formatFrequency = [] (double frequency)
+    {
+        return frequency >= 1000.0
+                   ? juce::String (frequency / 1000.0, 1) + " kHz"
+                   : juce::String (juce::roundToInt (frequency)) + " Hz";
+    };
+
+    for (std::size_t i = 0; i < sliders.size(); ++i)
+    {
+        const auto value = sliders[i].getValue();
+        juce::String text;
+        switch (i)
+        {
+            case driveControl: text = juce::String (value * 30.0, 1) + " dB"; break;
+            case hpfControl:
+            case lpfControl:
+            {
+                const auto* parameter = audioProcessor.getParameterState().getParameter (
+                    i == hpfControl ? "hpf" : "lpf");
+                const auto actualValue = parameter != nullptr
+                    ? parameter->convertFrom0to1 (static_cast<float> (value))
+                    : static_cast<float> (value);
+                text = formatFrequency (actualValue);
+                break;
+            }
+            case limiterControl: text = juce::String (-0.1 - value * 11.9, 1) + " dB"; break;
+            case widthControl: text = juce::String (value * 200.0, 0) + "%"; break;
+            case noiseControl: text = juce::String (value * 100.0, 0) + "%"; break;
+            default: text = juce::String (value * 100.0, 0) + "%"; break;
+        }
+        controlReadouts[i].setText (text, juce::dontSendNotification);
+    }
 }
 
 void MakosizerXAudioProcessorEditor::updateLCDDisplay()
@@ -314,6 +449,7 @@ void MakosizerXAudioProcessorEditor::updateLCDDisplay()
     state.wow = static_cast<float> (sliders[wowControl].getValue());
     state.flutter = static_cast<float> (sliders[flutterControl].getValue());
     state.outputLevel = outputLevel;
+    state.oversamplingFactor = audioProcessor.getOversamplingFactor();
     lcdDisplay.setState (state);
     updatePresetSelection();
 }
@@ -354,13 +490,16 @@ void MakosizerXAudioProcessorEditor::updateOversamplingSelection()
 
 void MakosizerXAudioProcessorEditor::loadPreset (const juce::String& presetName)
 {
+    presetChangeActive = true;
     const auto result = audioProcessor.getPresetManager().loadFactoryPreset (presetName);
+    presetChangeActive = false;
 
     if (result.failed())
         juce::AlertWindow::showMessageBoxAsync (
             juce::AlertWindow::WarningIcon, "Preset", result.getErrorMessage());
 
     updateLCDDisplay();
+    updateControlReadouts();
 }
 
 void MakosizerXAudioProcessorEditor::openPresetSaveDialog()
@@ -498,6 +637,7 @@ void MakosizerXAudioProcessorEditor::loadPresetFromFile (const juce::File& file)
     }
 
     updateLCDDisplay();
+    updateControlReadouts();
     updateOversamplingSelection();
     const juce::Component::SafePointer<MakosizerXAudioProcessorEditor> safeThis (this);
     juce::MessageManager::callAsync (
@@ -524,4 +664,5 @@ void MakosizerXAudioProcessorEditor::setOversamplingMode (int choiceIndex)
         parameter->convertTo0to1 (static_cast<float> (choiceIndex)));
     parameter->endChangeGesture();
     updateOversamplingSelection();
+    updateLCDDisplay();
 }

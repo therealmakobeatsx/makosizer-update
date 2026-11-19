@@ -94,8 +94,11 @@ MakosizerXAudioProcessor::createParameterLayout()
 void MakosizerXAudioProcessor::prepareToPlay (double sampleRate,
                                              int maximumExpectedSamplesPerBlock)
 {
-    juce::ignoreUnused (maximumExpectedSamplesPerBlock);
-    dsp.prepareToPlay (sampleRate);
+    dsp.prepareToPlay (sampleRate, maximumExpectedSamplesPerBlock);
+    samplerDisplaySampleCount = 0;
+    padChangeSampleCount = 0;
+    samplerDisplayNumber.store (1, std::memory_order_relaxed);
+    activePadIndex.store (-1, std::memory_order_relaxed);
     setLatencySamples (dsp.getLatencySamples());
 }
 
@@ -134,14 +137,53 @@ void MakosizerXAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         loadParameter (0), loadParameter (1), loadParameter (2), loadParameter (3),
         loadParameter (4), loadParameter (5), loadParameter (6), loadParameter (7),
         loadParameter (8), loadParameter (9), loadParameter (10), loadParameter (11),
-        loadParameter (12), loadParameter (13)
+        loadParameter (12), loadParameter (13),
+        static_cast<float> (juce::roundToInt (
+            oversamplingValue->load (std::memory_order_relaxed)))
     };
 
     dsp.process (buffer.getArrayOfWritePointers(), numOutputChannels, numSamples, parameters);
 
-    accumulatePeak (leftOutputPeak, buffer.getMagnitude (0, 0, numSamples));
+    const auto leftMagnitude = buffer.getMagnitude (0, 0, numSamples);
+    accumulatePeak (leftOutputPeak, leftMagnitude);
+    auto audibleMagnitude = leftMagnitude;
     if (numOutputChannels > 1)
-        accumulatePeak (rightOutputPeak, buffer.getMagnitude (1, 0, numSamples));
+    {
+        const auto rightMagnitude = buffer.getMagnitude (1, 0, numSamples);
+        accumulatePeak (rightOutputPeak, rightMagnitude);
+        audibleMagnitude = juce::jmax (audibleMagnitude, rightMagnitude);
+    }
+
+    if (audibleMagnitude > 0.0001f)
+    {
+        const auto sampleRate = juce::jmax (1.0, getSampleRate());
+        samplerDisplaySampleCount += static_cast<std::uint64_t> (numSamples);
+        padChangeSampleCount += static_cast<std::uint64_t> (numSamples);
+        const auto displayStep = static_cast<std::uint64_t> (sampleRate * 0.25);
+        if (samplerDisplaySampleCount >= displayStep)
+        {
+            samplerDisplaySampleCount %= displayStep;
+            const auto nextNumber = samplerDisplayNumber.load (std::memory_order_relaxed) % 4 + 1;
+            samplerDisplayNumber.store (nextNumber, std::memory_order_relaxed);
+        }
+
+        const auto padStep = static_cast<std::uint64_t> (sampleRate * 0.12);
+        if (padChangeSampleCount >= padStep)
+        {
+            padChangeSampleCount %= padStep;
+            padRandomState ^= padRandomState << 13;
+            padRandomState ^= padRandomState >> 17;
+            padRandomState ^= padRandomState << 5;
+            activePadIndex.store (static_cast<int> (padRandomState % 12u),
+                                  std::memory_order_relaxed);
+        }
+    }
+    else
+    {
+        samplerDisplaySampleCount = 0;
+        padChangeSampleCount = 0;
+        activePadIndex.store (-1, std::memory_order_relaxed);
+    }
 }
 
 juce::AudioProcessorEditor* MakosizerXAudioProcessor::createEditor()

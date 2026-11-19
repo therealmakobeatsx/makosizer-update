@@ -108,9 +108,11 @@ void MakosizerXLookAndFeel::drawRotarySlider (juce::Graphics& graphics,
     const auto pointerLength = knobRadius * (isDestroy ? 0.82f : 0.78f);
     const auto pointerX = centre.x + std::sin (angle) * pointerLength;
     const auto pointerY = centre.y - std::cos (angle) * pointerLength;
-    graphics.setColour (pointerRed.withAlpha (0.28f));
-    graphics.drawLine (centre.x, centre.y, pointerX, pointerY,
-                       isDestroy ? 9.0f : 6.0f);
+    if (! isDestroy)
+    {
+        graphics.setColour (pointerRed.withAlpha (0.28f));
+        graphics.drawLine (centre.x, centre.y, pointerX, pointerY, 6.0f);
+    }
     graphics.setColour (pointerRed);
     graphics.drawLine (centre.x, centre.y, pointerX, pointerY,
                        isDestroy ? 4.0f : 2.8f);

@@ -14,6 +14,7 @@ public:
         float wow = 0.0f;
         float flutter = 0.0f;
         float outputLevel = 0.0f;
+        int oversamplingFactor = 1;
     };
 
     LCDDisplay();

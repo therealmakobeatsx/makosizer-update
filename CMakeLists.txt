@@ -61,6 +61,7 @@ target_compile_definitions(MakosizerX
 
 target_link_libraries(MakosizerX
     PRIVATE
+        juce::juce_dsp
         juce::juce_audio_utils
         MakosizerXAssets
     PUBLIC
@@ -68,3 +69,16 @@ target_link_libraries(MakosizerX
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(MakosizerXDSPTests
+        tests/MakosizerXDSPTests.cpp
+        MakosizerXDSP.cpp
+    )
+    target_compile_features(MakosizerXDSPTests PRIVATE cxx_std_17)
+    target_include_directories(MakosizerXDSPTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(MakosizerXDSPTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(MakosizerXDSPTests PRIVATE juce::juce_dsp)
+    add_test(NAME MakosizerXDSPTests COMMAND MakosizerXDSPTests)
+endif()

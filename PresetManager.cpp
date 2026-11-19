@@ -169,7 +169,12 @@ juce::Result PresetManager::loadFactoryPreset (const juce::String& presetName)
 {
     if (presetName.equalsIgnoreCase ("CUSTOM"))
     {
-        markCurrentPresetCustom();
+        if (getCurrentPresetName().equalsIgnoreCase ("CUSTOM"))
+            rememberCustomPreset();
+        if (customPresetState.isValid())
+            parameterState.replaceState (customPresetState.createCopy());
+        else
+            markCurrentPresetCustom();
         return juce::Result::ok();
     }
 
@@ -185,6 +190,9 @@ juce::Result PresetManager::loadFactoryPreset (const juce::String& presetName)
 
     if (selectedPreset == nullptr)
         return juce::Result::fail ("Factory preset not found: " + presetName);
+
+    if (getCurrentPresetName().equalsIgnoreCase ("CUSTOM"))
+        rememberCustomPreset();
 
     std::array<juce::RangedAudioParameter*, parameterCount> parameters {};
     for (std::size_t i = 0; i < parameterIds.size(); ++i)
@@ -213,7 +221,15 @@ juce::Result PresetManager::loadFactoryPreset (const juce::String& presetName)
 
 void PresetManager::markCurrentPresetCustom()
 {
+    rememberCustomPreset();
     parameterState.state.setProperty ("presetName", "CUSTOM", nullptr);
+}
+
+void PresetManager::rememberCustomPreset()
+{
+    auto state = parameterState.copyState();
+    state.setProperty ("presetName", "CUSTOM", nullptr);
+    customPresetState = std::move (state);
 }
 
 juce::Result PresetManager::savePreset (const juce::File& file,
@@ -274,7 +290,10 @@ juce::Result PresetManager::loadPreset (const juce::File& file)
     if (state.getProperty ("presetName").toString().trim().isEmpty())
         state.setProperty ("presetName", "CUSTOM", nullptr);
 
+    const auto presetName = state.getProperty ("presetName").toString();
     parameterState.replaceState (state);
+    if (presetName.equalsIgnoreCase ("CUSTOM"))
+        customPresetState = parameterState.copyState();
     return juce::Result::ok();
 }
 
