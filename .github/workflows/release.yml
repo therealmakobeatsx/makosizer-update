@@ -436,9 +436,9 @@ jobs:
             echo "macOS installer signing credentials are unavailable; publishing an unsigned PKG."
           fi
           pkgutil --payload-files "$package" \
-            | grep -Fx 'Library/Audio/Plug-Ins/VST3/MakosizerX.vst3/Contents/Info.plist'
+            | grep -F 'Library/Audio/Plug-Ins/VST3/MakosizerX.vst3/Contents/Info.plist'
           pkgutil --payload-files "$package" \
-            | grep -Fx 'Library/Audio/Plug-Ins/Components/MakosizerX.component/Contents/Info.plist'
+            | grep -F 'Library/Audio/Plug-Ins/Components/MakosizerX.component/Contents/Info.plist'
           test -s "$package"
 
           if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" \
