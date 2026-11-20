@@ -139,7 +139,10 @@ jobs:
           mkdir -p "$stage"
           test -d "$vst3" || { echo "Missing VST3 bundle: $vst3" >&2; exit 1; }
           test -x "$standalone" || { echo "Missing standalone executable: $standalone" >&2; exit 1; }
+          rm -rf "$stage" dist/linux/MakosizerX.vst3
+          mkdir -p "$stage"
           cp -a "$vst3" "$stage/"
+          cp -a "$vst3" dist/linux/
           install -m 755 "$standalone" "$stage/MakosizerX"
           cp LICENSE README.md "$stage/"
           (
