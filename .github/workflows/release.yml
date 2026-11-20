@@ -96,7 +96,8 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [[ "$EVENT_NAME" == "workflow_dispatch" \
-                || "$COMMIT_MESSAGE" == *"[cross-platform-artifacts]"* ]]; then
+                || "$COMMIT_MESSAGE" == *"[cross-platform-artifacts]"* \
+                || "$COMMIT_MESSAGE" == *"[linux-only-artifacts]"* ]]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
@@ -105,7 +106,7 @@ jobs:
 
   linux:
     name: Linux VST3 and Standalone
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all') && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[cross-platform-artifacts]')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all') && (github.event_name != 'push' || (!contains(github.event.head_commit.message, '[cross-platform-artifacts]') && !contains(github.event.head_commit.message, '[linux-only-artifacts]'))) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[linux-only-artifacts]')) }}
     needs: version
     runs-on: ubuntu-24.04
     steps:
@@ -145,12 +146,17 @@ jobs:
             cd dist/linux
             zip -qr MakosizerX-Linux.zip MakosizerX
             tar -czf MakosizerX-Linux.tar.gz MakosizerX
+            zip -qr MakosizerX-Linux-VST3.zip MakosizerX.vst3
           )
           unzip -tq dist/linux/MakosizerX-Linux.zip
+          unzip -tq dist/linux/MakosizerX-Linux-VST3.zip
           tar -tzf dist/linux/MakosizerX-Linux.tar.gz \
             | grep '^MakosizerX/MakosizerX.vst3/Contents/' >/dev/null
+          unzip -Z1 dist/linux/MakosizerX-Linux-VST3.zip \
+            | grep '^MakosizerX.vst3/Contents/x86_64-linux/MakosizerX.so$' >/dev/null
           test -s dist/linux/MakosizerX-Linux.zip
           test -s dist/linux/MakosizerX-Linux.tar.gz
+          test -s dist/linux/MakosizerX-Linux-VST3.zip
 
       - name: Upload Linux build bundles
         uses: actions/upload-artifact@v4
@@ -169,11 +175,13 @@ jobs:
           path: |
             dist/linux/MakosizerX-Linux.zip
             dist/linux/MakosizerX-Linux.tar.gz
+            dist/linux/MakosizerX-Linux-VST3.zip
           if-no-files-found: error
           retention-days: 30
 
   windows:
     name: Windows VST3 and Standalone
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[linux-only-artifacts]') }}
     needs: version
     runs-on: windows-latest
     steps:
@@ -299,6 +307,7 @@ jobs:
 
   macos:
     name: macOS VST3, Audio Unit, and Standalone
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[linux-only-artifacts]') }}
     needs: version
     runs-on: macos-15-intel
     steps:
