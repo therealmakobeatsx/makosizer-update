@@ -38,6 +38,8 @@ public:
     void reset() noexcept;
     void process (float* const* channels, int numChannels, int numSamples,
                   const DSPParameters& parameters) noexcept;
+    void processBypassed (float* const* channels, int numChannels,
+                         int numSamples) noexcept;
 
     int getLatencySamples() const noexcept { return latencySamples; }
     float getLimiterGainReductionDb() const noexcept
@@ -53,13 +55,25 @@ private:
         float lowPassOutput = 0.0f;
         float vinylLowPassOutput = 0.0f;
         float vinylNoiseLowPass = 0.0f;
+        float vinylNoiseHighPass = 0.0f;
+        float vinylNoisePrevious = 0.0f;
+        float vinylCrackle = 0.0f;
+        float vinylPop = 0.0f;
         float compressorEnvelope = 0.0f;
         float limiterEnvelope = 0.0f;
+        float limiterGain = 1.0f;
+        float smoothedVinyl = 0.0f;
+        float smoothedNonlinearVinyl = 0.0f;
+        float smoothedLimiter = 0.0f;
         float dustDropoutRemaining = 0.0f;
         float dustDropoutGain = 1.0f;
         double wowPhase = 0.0;
         double flutterPhase = 0.0;
+        double vinylWowPhase = 0.0;
+        double vinylFlutterPhase = 0.0;
+        double rumblePhase = 0.0;
         std::uint32_t randomState = 1;
+        bool limiterControlInitialized = false;
     };
 
     static float clamp01 (float value) noexcept;
@@ -68,12 +82,17 @@ private:
     static std::uint32_t nextRandom (std::uint32_t& state) noexcept;
     static float randomUnit (std::uint32_t& state) noexcept;
     static float randomBipolar (std::uint32_t& state) noexcept;
-    static void processNonlinearStages (juce::dsp::AudioBlock<float> block,
-                                        float drive, float destroy,
-                                        float vinyl, float crush) noexcept;
+    void processNonlinearStages (juce::dsp::AudioBlock<float> block,
+                                float drive, float destroy,
+                                float vinyl, float crush, float comp,
+                                float sampleRate) noexcept;
+    void processLimiterStages (juce::dsp::AudioBlock<float> block,
+                               float limiter, int oversamplingFactor,
+                               float& maximumGainReductionDb) noexcept;
 
     std::array<ChannelState, 2> channelStates;
     std::array<std::vector<float>, 4> delayLines;
+    std::array<std::vector<float>, 2> bypassDelayLines;
     std::array<std::vector<float>, 2> limiterDelayLines;
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplingProcessors;
     std::array<int, 3> oversamplingLatencySamples {};
@@ -83,6 +102,7 @@ private:
     std::size_t writePosition = 0;
     int maximumOversamplingLatencySamples = 0;
     int lastOversamplingIndex = -1;
+    std::size_t bypassWritePosition = 0;
     std::size_t limiterWritePosition = 0;
     std::atomic<float> limiterGainReductionDb { 0.0f };
     int latencySamples = 220;

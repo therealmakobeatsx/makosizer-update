@@ -230,7 +230,7 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
             continue;
 
         const auto centre = juce::Point<float> (
-            64.0f, button->getBounds().getCentreY() - 1.5f);
+            64.0f, static_cast<float> (button->getBounds().getCentreY()));
         graphics.setColour (ledRed.withAlpha (0.12f));
         graphics.fillEllipse (juce::Rectangle<float> (centre.x - 9.0f, centre.y - 9.0f,
                                                        18.0f, 18.0f));
@@ -254,7 +254,7 @@ void MakosizerXAudioProcessorEditor::paint (juce::Graphics& graphics)
         {
             const auto centre = juce::Point<float> (
                 button->getBounds().getCentreX(),
-                static_cast<float> (button->getBounds().getBottom() - 6));
+                static_cast<float> (button->getBounds().getBottom()));
             graphics.setColour (ledRed.withAlpha (0.18f));
             graphics.fillEllipse (juce::Rectangle<float> (centre.x - 5.0f,
                                                            centre.y - 5.0f, 10.0f, 10.0f));

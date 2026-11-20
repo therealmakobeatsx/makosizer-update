@@ -7,6 +7,15 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build (Linux packages already exist)
+        required: true
+        type: choice
+        options:
+          - windows-macos
+          - all
+        default: windows-macos
 
 permissions:
   contents: read
@@ -85,11 +94,16 @@ jobs:
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "publish=true" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
           echo "Resolved MakosizerX version: $version"
 
   linux:
     name: Linux VST3 and Standalone
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all'
     needs: version
     runs-on: ubuntu-24.04
     steps:
@@ -170,8 +184,7 @@ jobs:
           cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release `
             -DMAKOSIZERX_VERSION="$env:VERSION" -DBUILD_TESTING=ON
           cmake --build build --config Release `
-            --target MakosizerX_VST3 MakosizerX_Standalone MakosizerXDSPTests `
-            MakosizerXUITests --parallel 2
+            --target MakosizerX_VST3 MakosizerXDSPTests MakosizerXUITests --parallel 2
           ctest --test-dir build -C Release --output-on-failure
 
       - name: Package Windows downloads and optional signing
@@ -183,16 +196,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $bundle = Join-Path $env:GITHUB_WORKSPACE 'build\MakosizerX_artefacts\Release\VST3\MakosizerX.vst3'
-          $standalone = Join-Path $env:GITHUB_WORKSPACE 'build\MakosizerX_artefacts\Release\Standalone\MakosizerX.exe'
           if (-not (Test-Path -LiteralPath $bundle -PathType Container)) {
             throw "Expected VST3 bundle was not built: $bundle"
           }
-          if (-not (Test-Path -LiteralPath $standalone -PathType Leaf)) {
-            throw "Expected standalone executable was not built: $standalone"
-          }
 
           $output = Join-Path $env:GITHUB_WORKSPACE 'dist\windows'
-          $stage = Join-Path $output 'MakosizerX'
+          $stage = Join-Path $output 'MakosizerX-VST3'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
           $certificatePath = $null
@@ -210,9 +219,9 @@ jobs:
             )
             $filesToSign = @(
               Get-ChildItem -LiteralPath $bundle -Recurse -File |
-                Where-Object { $_.Extension -in @('.dll', '.exe') } |
+                Where-Object { $_.Extension -in @('.dll', '.exe', '.vst3') } |
                 ForEach-Object { $_.FullName }
-            ) + @($standalone)
+            )
             foreach ($file in $filesToSign) {
               & $signTool.Source sign /fd SHA256 /f $certificatePath `
                 /p $env:WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com `
@@ -223,12 +232,11 @@ jobs:
 
           try {
             Copy-Item -LiteralPath $bundle -Destination $stage -Recurse
-            Copy-Item -LiteralPath $standalone -Destination $stage
             Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination $stage
             Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'README.md') -Destination $stage
 
             Compress-Archive -Path (Join-Path $stage '*') `
-              -DestinationPath (Join-Path $output 'MakosizerX-Windows.zip') `
+              -DestinationPath (Join-Path $output 'MakosizerX-Windows-VST3.zip') `
               -CompressionLevel Optimal -Force
 
             $env:MAKOSIZERX_VST3_PATH = (Resolve-Path -LiteralPath $bundle).Path
@@ -236,9 +244,9 @@ jobs:
             & iscc.exe (Join-Path $env:GITHUB_WORKSPACE 'MakosizerX.iss') "/O$output"
             if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
-            $installer = Join-Path $output 'MakosizerX Setup.exe'
+            $installer = Join-Path $output 'MakosizerX-Setup.exe'
             if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
-              throw 'Inno Setup did not create MakosizerX Setup.exe'
+              throw 'Inno Setup did not create MakosizerX-Setup.exe'
             }
             if ($certificatePath) {
               & $signTool.Source sign /fd SHA256 /f $certificatePath `
@@ -248,14 +256,19 @@ jobs:
             }
 
             Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $archivePath = Join-Path $output 'MakosizerX-Windows.zip'
+            $archivePath = Join-Path $output 'MakosizerX-Windows-VST3.zip'
             $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
             try {
-              if (-not ($archive.Entries | Where-Object { $_.FullName -like 'MakosizerX.vst3/Contents/*' })) {
-                throw 'MakosizerX-Windows.zip is missing the VST3 bundle contents.'
+              if (-not ($archive.Entries | Where-Object {
+                $_.FullName -like 'MakosizerX.vst3/Contents/x86_64-win/*.vst3'
+              })) {
+                throw 'MakosizerX-Windows-VST3.zip is missing the VST3 plugin binary.'
               }
             } finally {
               $archive.Dispose()
+            }
+            if ((Get-Item -LiteralPath $installer).Length -le 0) {
+              throw 'The Windows installer is empty.'
             }
           } finally {
             if ($certificatePath -and (Test-Path -LiteralPath $certificatePath)) {
@@ -269,17 +282,16 @@ jobs:
           name: MakosizerX-Windows-Build
           path: |
             build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
-            build/MakosizerX_artefacts/Release/Standalone/MakosizerX.exe
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Windows packages
+      - name: Upload Windows release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MakosizerX-Windows-Packages
+          name: MakosizerX-Windows-Release
           path: |
-            dist/windows/MakosizerX-Windows.zip
-            dist/windows/MakosizerX Setup.exe
+            dist/windows/MakosizerX-Windows-VST3.zip
+            dist/windows/MakosizerX-Setup.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -299,8 +311,8 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DMAKOSIZERX_VERSION="$VERSION" -DBUILD_TESTING=ON
           cmake --build build --config Release \
-            --target MakosizerX_VST3 MakosizerX_AU MakosizerX_Standalone \
-            MakosizerXDSPTests MakosizerXUITests --parallel 2
+            --target MakosizerX_VST3 MakosizerX_AU MakosizerXDSPTests \
+            MakosizerXUITests --parallel 2
           ctest --test-dir build --output-on-failure
 
       - name: Sign macOS bundles when credentials are available
@@ -349,42 +361,101 @@ jobs:
       - name: Package macOS downloads and optional notarization
         shell: bash
         env:
+          VERSION: ${{ needs.version.outputs.version }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_INSTALLER_SIGNING_IDENTITY: ${{ secrets.MACOS_INSTALLER_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           vst3="build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3"
           au="build/MakosizerX_artefacts/Release/AU/MakosizerX.component"
-          standalone="build/MakosizerX_artefacts/Release/Standalone/MakosizerX.app"
-          stage="dist/macos/MakosizerX"
-          mkdir -p "$stage/VST3" "$stage/Audio Unit"
+          vst3_stage="dist/macos/MakosizerX-VST3"
+          au_stage="dist/macos/MakosizerX-AU"
           test -d "$vst3" || { echo "Missing VST3 bundle: $vst3" >&2; exit 1; }
           test -d "$au" || { echo "Missing AU component: $au" >&2; exit 1; }
-          ditto "$vst3" "$stage/VST3/MakosizerX.vst3"
-          ditto "$au" "$stage/Audio Unit/MakosizerX.component"
-          if [[ -d "$standalone" ]]; then
-            mkdir -p "$stage/Standalone"
-            ditto "$standalone" "$stage/Standalone/MakosizerX.app"
-          fi
-          cp LICENSE README.md "$stage/"
+          mkdir -p "$vst3_stage" "$au_stage"
+          ditto "$vst3" "$vst3_stage/MakosizerX.vst3"
+          ditto "$au" "$au_stage/MakosizerX.component"
+          cp LICENSE README.md "$vst3_stage/"
+          cp LICENSE README.md "$au_stage/"
 
           mkdir -p dist/macos
-          ditto -c -k --sequesterRsrc --keepParent "$stage" \
-            dist/macos/MakosizerX-macOS.zip
-          unzip -tq dist/macos/MakosizerX-macOS.zip
-          test -s dist/macos/MakosizerX-macOS.zip
+          ditto -c -k --sequesterRsrc --keepParent "$vst3_stage" \
+            dist/macos/MakosizerX-macOS-VST3.zip
+          ditto -c -k --sequesterRsrc --keepParent "$au_stage" \
+            dist/macos/MakosizerX-macOS-AU.zip
+          unzip -tq dist/macos/MakosizerX-macOS-VST3.zip
+          unzip -tq dist/macos/MakosizerX-macOS-AU.zip
+          unzip -Z1 dist/macos/MakosizerX-macOS-VST3.zip \
+            | grep -E '/MakosizerX\.vst3/Contents/Info\.plist$'
+          unzip -Z1 dist/macos/MakosizerX-macOS-AU.zip \
+            | grep -E '/MakosizerX\.component/Contents/Info\.plist$'
+          test -s dist/macos/MakosizerX-macOS-VST3.zip
+          test -s dist/macos/MakosizerX-macOS-AU.zip
+
+          package_root="$RUNNER_TEMP/makosizerx-pkgroot"
+          unsigned_package="$RUNNER_TEMP/MakosizerX-unsigned.pkg"
+          package="dist/macos/MakosizerX.pkg"
+          mkdir -p "$package_root/Library/Audio/Plug-Ins/VST3" \
+            "$package_root/Library/Audio/Plug-Ins/Components"
+          ditto "$vst3" "$package_root/Library/Audio/Plug-Ins/VST3/MakosizerX.vst3"
+          ditto "$au" "$package_root/Library/Audio/Plug-Ins/Components/MakosizerX.component"
+          pkgbuild --root "$package_root" --identifier com.makosizerx.plugin \
+            --version "$VERSION" --install-location / "$unsigned_package"
+
+          if [[ -n "$MACOS_INSTALLER_SIGNING_IDENTITY" \
+                && -n "$MACOS_CERTIFICATE_P12_BASE64" \
+                && -n "$MACOS_CERTIFICATE_PASSWORD" \
+                && -n "$MACOS_SIGNING_IDENTITY" ]]; then
+            keychain="$RUNNER_TEMP/makosizerx-installer-signing.keychain-db"
+            certificate="$RUNNER_TEMP/makosizerx-installer-signing.p12"
+            keychain_password="$(openssl rand -hex 24)"
+            cleanup() {
+              security delete-keychain "$keychain" >/dev/null 2>&1 || true
+              rm -f "$certificate"
+            }
+            trap cleanup EXIT
+            printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$certificate"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$certificate" -k "$keychain" \
+              -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/productsign
+            security set-key-partition-list -S apple-tool:,apple: -s \
+              -k "$keychain_password" "$keychain"
+            productsign --keychain "$keychain" --sign "$MACOS_INSTALLER_SIGNING_IDENTITY" \
+              "$unsigned_package" "$package"
+          else
+            mv "$unsigned_package" "$package"
+            echo "macOS installer signing credentials are unavailable; publishing an unsigned PKG."
+          fi
+          pkgutil --payload-files "$package" \
+            | grep -Fx 'Library/Audio/Plug-Ins/VST3/MakosizerX.vst3/Contents/Info.plist'
+          pkgutil --payload-files "$package" \
+            | grep -Fx 'Library/Audio/Plug-Ins/Components/MakosizerX.component/Contents/Info.plist'
+          test -s "$package"
 
           if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" \
                 && -n "$MACOS_CERTIFICATE_P12_BASE64" \
                 && -n "$MACOS_CERTIFICATE_PASSWORD" \
                 && -n "$MACOS_SIGNING_IDENTITY" ]]; then
-            xcrun notarytool submit dist/macos/MakosizerX-macOS.zip \
+            xcrun notarytool submit dist/macos/MakosizerX-macOS-VST3.zip \
               --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" --wait
+            xcrun notarytool submit dist/macos/MakosizerX-macOS-AU.zip \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" --wait
+            if [[ -n "$MACOS_INSTALLER_SIGNING_IDENTITY" ]]; then
+              xcrun notarytool submit "$package" \
+                --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" --wait
+            else
+              echo "PKG notarization requires MACOS_INSTALLER_SIGNING_IDENTITY."
+            fi
           else
             echo "Notarization credentials or signing identity are unavailable; skipping notarization."
           fi
@@ -417,15 +488,17 @@ jobs:
           path: |
             build/MakosizerX_artefacts/Release/VST3/MakosizerX.vst3
             build/MakosizerX_artefacts/Release/AU/MakosizerX.component
-            build/MakosizerX_artefacts/Release/Standalone/MakosizerX.app
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload macOS package
+      - name: Upload macOS release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MakosizerX-macOS-Packages
-          path: dist/macos/MakosizerX-macOS.zip
+          name: MakosizerX-macOS-Release
+          path: |
+            dist/macos/MakosizerX-macOS-AU.zip
+            dist/macos/MakosizerX-macOS-VST3.zip
+            dist/macos/MakosizerX.pkg
           if-no-files-found: error
           retention-days: 30
 
@@ -450,13 +523,13 @@ jobs:
       - name: Download Windows packages
         uses: actions/download-artifact@v4
         with:
-          name: MakosizerX-Windows-Packages
+          name: MakosizerX-Windows-Release
           path: release-assets/windows
 
       - name: Download macOS packages
         uses: actions/download-artifact@v4
         with:
-          name: MakosizerX-macOS-Packages
+          name: MakosizerX-macOS-Release
           path: release-assets/macos
 
       - name: Generate release notes and changelog
@@ -480,9 +553,11 @@ jobs:
           required=(
             release-assets/linux/MakosizerX-Linux.zip
             release-assets/linux/MakosizerX-Linux.tar.gz
-            release-assets/windows/MakosizerX-Windows.zip
-            'release-assets/windows/MakosizerX Setup.exe'
-            release-assets/macos/MakosizerX-macOS.zip
+            release-assets/windows/MakosizerX-Windows-VST3.zip
+            release-assets/windows/MakosizerX-Setup.exe
+            release-assets/macos/MakosizerX-macOS-AU.zip
+            release-assets/macos/MakosizerX-macOS-VST3.zip
+            release-assets/macos/MakosizerX.pkg
           )
           for asset in "${required[@]}"; do
             test -s "$asset" || { echo "Missing release asset: $asset" >&2; exit 1; }
@@ -498,9 +573,11 @@ jobs:
           assets=(
             release-assets/linux/MakosizerX-Linux.zip
             release-assets/linux/MakosizerX-Linux.tar.gz
-            release-assets/windows/MakosizerX-Windows.zip
-            'release-assets/windows/MakosizerX Setup.exe'
-            release-assets/macos/MakosizerX-macOS.zip
+            release-assets/windows/MakosizerX-Windows-VST3.zip
+            release-assets/windows/MakosizerX-Setup.exe
+            release-assets/macos/MakosizerX-macOS-AU.zip
+            release-assets/macos/MakosizerX-macOS-VST3.zip
+            release-assets/macos/MakosizerX.pkg
             release-assets/changelog/MakosizerX-CHANGELOG.md
           )
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

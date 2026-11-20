@@ -47,6 +47,7 @@ MakosizerXAudioProcessor::MakosizerXAudioProcessor()
     }},
       oversamplingValue (parameterState.getRawParameterValue ("oversampling"))
 {
+    setLatencySamples (dsp.getLatencySamples());
 }
 
 MakosizerXAudioProcessor::ParameterState::ParameterLayout
@@ -150,6 +151,18 @@ void MakosizerXAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         audibleMagnitude = juce::jmax (audibleMagnitude, rightMagnitude);
     }
 
+}
+
+void MakosizerXAudioProcessor::processBlockBypassed (
+    juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+    juce::ignoreUnused (midiMessages);
+
+    const auto numOutputChannels = juce::jmin (getTotalNumOutputChannels(),
+                                               buffer.getNumChannels());
+    dsp.processBypassed (buffer.getArrayOfWritePointers(), numOutputChannels,
+                         buffer.getNumSamples());
 }
 
 juce::AudioProcessorEditor* MakosizerXAudioProcessor::createEditor()

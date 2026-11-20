@@ -57,7 +57,7 @@ void MakosizerXDSP::prepareToPlay (double sampleRate,
 
     const auto fixedDelay = std::max (
         1, static_cast<int> (std::round (currentSampleRate * 0.005)));
-    latencySamples = fixedDelay + maximumOversamplingLatencySamples;
+    latencySamples = 2 * (fixedDelay + maximumOversamplingLatencySamples);
 
     const auto maximumModulationSamples = static_cast<std::size_t> (
         std::ceil (currentSampleRate * 0.0040));
@@ -67,9 +67,11 @@ void MakosizerXDSP::prepareToPlay (double sampleRate,
     for (auto& line : delayLines)
         line.assign (delayLength, 0.0f);
 
+    for (auto& line : bypassDelayLines)
+        line.assign (static_cast<std::size_t> (latencySamples) + 1, 0.0f);
+
     for (auto& line : limiterDelayLines)
-        line.assign (static_cast<std::size_t> (
-                         fixedDelay + 1), 0.0f);
+        line.assign (static_cast<std::size_t> (fixedDelay * 8 + 1), 0.0f);
 
     reset();
 }
@@ -78,10 +80,13 @@ void MakosizerXDSP::reset() noexcept
 {
     for (auto& line : delayLines)
         std::fill (line.begin(), line.end(), 0.0f);
+    for (auto& line : bypassDelayLines)
+        std::fill (line.begin(), line.end(), 0.0f);
     for (auto& line : limiterDelayLines)
         std::fill (line.begin(), line.end(), 0.0f);
 
     writePosition = 0;
+    bypassWritePosition = 0;
     limiterWritePosition = 0;
     limiterGainReductionDb.store (0.0f, std::memory_order_relaxed);
     lastOversamplingIndex = -1;
@@ -138,7 +143,8 @@ float MakosizerXDSP::randomBipolar (std::uint32_t& state) noexcept
 
 void MakosizerXDSP::processNonlinearStages (juce::dsp::AudioBlock<float> block,
                                            float drive, float destroy,
-                                           float vinyl, float crush) noexcept
+                                           float vinyl, float crush, float comp,
+                                           float sampleRate) noexcept
 {
     const auto driveGain = 1.0f + drive * 23.0f;
     const auto driveMakeup = 1.0f / std::sqrt (driveGain);
@@ -147,12 +153,16 @@ void MakosizerXDSP::processNonlinearStages (juce::dsp::AudioBlock<float> block,
     const auto destroyBiasOutput = std::tanh (destroyBias);
     const auto crushBits = 16.0f - crush * 12.0f;
     const auto crushLevels = std::exp2 (crushBits - 1.0f);
+    const auto vinylSmoothing = 1.0f - std::exp (-1.0f / (0.015f * sampleRate));
 
     for (std::size_t channel = 0; channel < block.getNumChannels(); ++channel)
     {
         auto* samples = block.getChannelPointer (channel);
+        auto& state = channelStates[channel];
         for (std::size_t sample = 0; sample < block.getNumSamples(); ++sample)
         {
+            state.smoothedNonlinearVinyl += vinylSmoothing
+                * (vinyl - state.smoothedNonlinearVinyl);
             auto wet = samples[sample];
 
             if (drive > 0.0f)
@@ -168,10 +178,11 @@ void MakosizerXDSP::processNonlinearStages (juce::dsp::AudioBlock<float> block,
                 wet += destroy * 0.65f * (saturated - wet);
             }
 
-            if (vinyl > 0.0f)
+            if (state.smoothedNonlinearVinyl > 0.0f)
             {
-                const auto saturated = std::tanh (wet * (1.0f + vinyl * 3.8f));
-                wet += vinyl * 0.48f * (saturated - wet);
+                const auto saturated = std::tanh (
+                    wet * (1.0f + state.smoothedNonlinearVinyl * 3.8f));
+                wet += state.smoothedNonlinearVinyl * 0.48f * (saturated - wet);
             }
 
             if (crush > 0.0f)
@@ -181,8 +192,124 @@ void MakosizerXDSP::processNonlinearStages (juce::dsp::AudioBlock<float> block,
                 wet += crush * (quantized - wet);
             }
 
+            if (comp > 0.0f)
+            {
+                const auto glueDrive = 1.0f + comp * 0.75f;
+                wet = std::tanh (wet * glueDrive) / std::tanh (glueDrive);
+            }
+
             samples[sample] = wet;
         }
+    }
+}
+
+void MakosizerXDSP::processLimiterStages (
+    juce::dsp::AudioBlock<float> block, float limiter, int oversamplingFactor,
+    float& maximumGainReductionDb) noexcept
+{
+    const auto internalRate = static_cast<float> (currentSampleRate)
+                             * static_cast<float> (oversamplingFactor);
+    const auto limiterControlSmoothing = 1.0f - std::exp (-1.0f / (0.005f * internalRate));
+    const auto detectorAttack = std::exp (-1.0f / (0.00015f * internalRate));
+    const auto detectorRelease = std::exp (-1.0f / (0.080f * internalRate));
+    const auto gainAttack = std::exp (-1.0f / (0.00015f * internalRate));
+    const auto gainRelease = std::exp (-1.0f / (0.080f * internalRate));
+    const auto baseLookAheadSamples = std::max (
+        1, static_cast<int> (std::round (currentSampleRate * 0.005)));
+    const auto lookAheadSamples = static_cast<std::size_t> (
+        baseLookAheadSamples * oversamplingFactor);
+    const auto channelCount = std::min<std::size_t> (block.getNumChannels(), 2);
+
+    for (std::size_t sample = 0; sample < block.getNumSamples(); ++sample)
+    {
+        float linkedMagnitude = 0.0f;
+        for (std::size_t channel = 0; channel < channelCount; ++channel)
+            linkedMagnitude = std::max (linkedMagnitude,
+                                        std::abs (block.getSample (channel, sample)));
+
+        float sharedControl = 0.0f;
+        float linkedEnvelope = 0.0f;
+        for (std::size_t channel = 0; channel < channelCount; ++channel)
+        {
+            auto& state = channelStates[channel];
+            if (! state.limiterControlInitialized)
+            {
+                state.smoothedLimiter = limiter;
+                state.limiterControlInitialized = true;
+            }
+            else
+            {
+                state.smoothedLimiter += limiterControlSmoothing
+                    * (limiter - state.smoothedLimiter);
+            }
+            sharedControl = std::max (sharedControl, state.smoothedLimiter);
+
+            const auto detectorCoefficient = linkedMagnitude > state.limiterEnvelope
+                                                 ? detectorAttack
+                                                 : detectorRelease;
+            state.limiterEnvelope = detectorCoefficient * state.limiterEnvelope
+                                    + (1.0f - detectorCoefficient) * linkedMagnitude;
+            linkedEnvelope = std::max (linkedEnvelope, state.limiterEnvelope);
+        }
+
+        const auto limiterCeilingDb = -0.1f - sharedControl * 11.9f;
+        const auto limiterCeiling = std::pow (10.0f, limiterCeilingDb / 20.0f);
+        const auto targetGain = sharedControl > 0.0001f
+                                    ? std::min (1.0f, limiterCeiling
+                                                        / std::max (linkedEnvelope, 1.0e-9f))
+                                    : 1.0f;
+
+        for (std::size_t channel = 0; channel < channelCount; ++channel)
+        {
+            auto& state = channelStates[channel];
+            const auto gainCoefficient = targetGain < state.limiterGain
+                                             ? gainAttack
+                                             : gainRelease;
+            state.limiterGain = gainCoefficient * state.limiterGain
+                                + (1.0f - gainCoefficient) * targetGain;
+
+            auto& delayLine = limiterDelayLines[channel];
+            delayLine[limiterWritePosition] = block.getSample (channel, sample);
+            const auto readPosition = (limiterWritePosition + delayLine.size()
+                                       - lookAheadSamples) % delayLine.size();
+            auto output = delayLine[readPosition] * state.limiterGain;
+
+            if (sharedControl > 0.0001f && std::abs (output) > limiterCeiling)
+            {
+                const auto correction = limiterCeiling / std::abs (output);
+                output *= correction;
+                state.limiterGain *= correction;
+            }
+
+            maximumGainReductionDb = std::max (
+                maximumGainReductionDb,
+                -20.0f * std::log10 (std::max (state.limiterGain, 1.0e-9f)));
+            block.setSample (channel, sample, output);
+        }
+
+        limiterWritePosition = (limiterWritePosition + 1) % limiterDelayLines[0].size();
+    }
+}
+
+void MakosizerXDSP::processBypassed (float* const* channels, int numChannels,
+                                     int numSamples) noexcept
+{
+    if (channels == nullptr || numChannels <= 0 || numSamples <= 0
+        || bypassDelayLines[0].empty())
+        return;
+
+    const auto activeChannels = std::min (numChannels, 2);
+    const auto delaySamples = static_cast<float> (latencySamples);
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        for (int channel = 0; channel < activeChannels; ++channel)
+        {
+            auto& delayLine = bypassDelayLines[static_cast<std::size_t> (channel)];
+            delayLine[bypassWritePosition] = channels[channel][sample];
+            channels[channel][sample] = readDelay (
+                delayLine, bypassWritePosition, delaySamples);
+        }
+        bypassWritePosition = (bypassWritePosition + 1) % bypassDelayLines[0].size();
     }
 }
 
@@ -190,7 +317,8 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                              const DSPParameters& parameters) noexcept
 {
     if (channels == nullptr || numChannels <= 0 || numSamples <= 0
-        || delayLines[0].empty() || maximumBlockSize == 0)
+        || delayLines[0].empty() || bypassDelayLines[0].empty()
+        || maximumBlockSize == 0)
         return;
 
     const auto activeChannels = std::min (numChannels, 2);
@@ -234,6 +362,13 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                                        sampleRate * 0.45f);
     const auto vinylCoefficient = 1.0f - std::exp (
         static_cast<float> (-twoPi) * vinylCutoff / sampleRate);
+    const auto vinylNoiseHighPassCoefficient = std::exp (
+        static_cast<float> (-twoPi) * 220.0f / sampleRate);
+    const auto vinylNoiseLowPassCoefficient = 1.0f - std::exp (
+        static_cast<float> (-twoPi) * 7800.0f / sampleRate);
+    const auto vinylControlSmoothing = 1.0f - std::exp (-1.0f / (0.015f * sampleRate));
+    const auto vinylCrackleDecay = std::exp (-1.0f / (0.008f * sampleRate));
+    const auto vinylPopDecay = std::exp (-1.0f / (0.018f * sampleRate));
     const auto compressorAttack = std::exp (-1.0f / (0.006f * sampleRate));
     const auto compressorRelease = std::exp (-1.0f / (0.145f * sampleRate));
     const auto compressorRatio = 3.0f + comp * 13.0f;
@@ -241,21 +376,18 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
     const auto compressorMakeup = 1.0f + comp * 0.55f;
     const auto fixedDelay = static_cast<float> (
         std::max (1, static_cast<int> (std::round (currentSampleRate * 0.005))));
-    const auto dryDelay = static_cast<float> (latencySamples);
     const auto selectedOversamplingLatency = oversamplingIndex == 0
         ? 0
         : oversamplingLatencySamples[static_cast<std::size_t> (oversamplingIndex - 1)];
+    const auto dryDelay = static_cast<float> (
+        latencySamples - selectedOversamplingLatency
+        - std::max (1, static_cast<int> (std::round (currentSampleRate * 0.005))));
     const auto wetBaseDelay = fixedDelay
-                              + static_cast<float> (maximumOversamplingLatencySamples
-                                                    - selectedOversamplingLatency);
+                              + 2.0f * static_cast<float> (
+                                  maximumOversamplingLatencySamples
+                                  - selectedOversamplingLatency);
     const auto wowDepth = static_cast<float> (currentSampleRate * 0.0028);
     const auto flutterDepth = static_cast<float> (currentSampleRate * 0.0009);
-    const auto limiterCeilingDb = -0.1f - limiter * 11.9f;
-    const auto limiterCeiling = std::pow (10.0f, limiterCeilingDb / 20.0f);
-    const auto limiterThresholdDb = limiterCeilingDb - 6.0f;
-    const auto limiterThreshold = std::pow (10.0f, limiterThresholdDb / 20.0f);
-    const auto limiterAttack = std::exp (-1.0f / (0.002f * sampleRate));
-    const auto limiterRelease = std::exp (-1.0f / (0.120f * sampleRate));
     auto maximumLimiterGainReductionDb = 0.0f;
 
     auto blockOffset = 0;
@@ -270,7 +402,12 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
             {
                 const auto channelIndex = static_cast<std::size_t> (channel);
                 auto& state = channelStates[channelIndex];
-                auto wet = channels[channel][blockOffset + sample];
+                const auto input = channels[channel][blockOffset + sample];
+                bypassDelayLines[channelIndex][bypassWritePosition] = input;
+                auto wet = input;
+                state.smoothedVinyl += vinylControlSmoothing
+                    * (vinyl - state.smoothedVinyl);
+                const auto vinylAmount = state.smoothedVinyl;
 
                 state.highPassOutput = highPassCoefficient
                                        * (state.highPassOutput + wet
@@ -283,16 +420,46 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
 
                 state.vinylLowPassOutput += vinylCoefficient
                                             * (wet - state.vinylLowPassOutput);
-                wet += vinyl * (state.vinylLowPassOutput - wet);
+                wet += vinylAmount * (state.vinylLowPassOutput - wet);
 
                 auto& randomState = state.randomState;
-                state.vinylNoiseLowPass += 0.06f
-                                           * (randomBipolar (randomState)
-                                              - state.vinylNoiseLowPass);
-                wet += vinyl * state.vinylNoiseLowPass * 0.0035f;
-                wet += vinyl * vinyl * randomBipolar (randomState) * 0.018f;
-                if (randomUnit (randomState) < vinyl * 0.00012f)
-                    wet += randomBipolar (randomState) * (0.025f + vinyl * 0.10f);
+                const auto surfaceNoise = randomBipolar (randomState);
+                state.vinylNoiseHighPass = vinylNoiseHighPassCoefficient
+                    * (state.vinylNoiseHighPass + surfaceNoise
+                       - state.vinylNoisePrevious);
+                state.vinylNoisePrevious = surfaceNoise;
+                state.vinylNoiseLowPass += vinylNoiseLowPassCoefficient
+                    * (state.vinylNoiseHighPass - state.vinylNoiseLowPass);
+                wet += vinylAmount * state.vinylNoiseLowPass * 0.008f;
+
+                const auto crackleAmount = std::clamp (
+                    (vinylAmount - 0.25f) * 4.0f, 0.0f, 1.0f);
+                const auto popAmount = std::clamp (
+                    (vinylAmount - 0.50f) * 4.0f, 0.0f, 1.0f);
+                const auto rumbleAmount = std::clamp (
+                    (vinylAmount - 0.75f) * 4.0f, 0.0f, 1.0f);
+                state.vinylCrackle *= vinylCrackleDecay;
+                if (crackleAmount > 0.0f
+                    && randomUnit (randomState) < crackleAmount * 0.00006f)
+                    state.vinylCrackle += randomBipolar (randomState)
+                                           * (0.025f + crackleAmount * 0.025f);
+                wet += state.vinylCrackle;
+
+                state.vinylPop *= vinylPopDecay;
+                if (popAmount > 0.0f
+                    && randomUnit (randomState) < popAmount * 0.000012f)
+                    state.vinylPop += randomBipolar (randomState)
+                                       * (0.035f + randomUnit (randomState) * 0.075f);
+                wet += state.vinylPop;
+
+                state.rumblePhase += twoPi * (31.0 + 17.0 * channel)
+                                    / currentSampleRate;
+                if (state.rumblePhase >= twoPi)
+                    state.rumblePhase -= twoPi;
+                if (rumbleAmount > 0.0f)
+                    wet += rumbleAmount * static_cast<float> (std::sin (state.rumblePhase))
+                           * 0.0015f;
+
                 wet += randomBipolar (randomState) * noise * 0.012f;
                 if (dust > 0.0f && randomUnit (randomState) < dust * 0.00003f)
                 {
@@ -311,6 +478,7 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
 
                 nonlinearBuffer.setSample (channel, sample, wet);
             }
+            bypassWritePosition = (bypassWritePosition + 1) % bypassDelayLines[0].size();
         }
 
         if (activeChannels == 1)
@@ -324,14 +492,17 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
             static_cast<std::size_t> (blockSize));
         if (oversamplingIndex == 0)
         {
-            processNonlinearStages (baseRateBlock, drive, destroy, vinyl, crush);
+            processNonlinearStages (baseRateBlock, drive, destroy, vinyl, crush,
+                                    comp, sampleRate);
         }
         else
         {
+            const auto oversamplingFactor = 1 << oversamplingIndex;
             auto& oversampling = *oversamplingProcessors[
                 static_cast<std::size_t> (oversamplingIndex - 1)];
             auto oversampledBlock = oversampling.processSamplesUp (baseRateBlock);
-            processNonlinearStages (oversampledBlock, drive, destroy, vinyl, crush);
+            processNonlinearStages (oversampledBlock, drive, destroy, vinyl, crush,
+                                    comp, sampleRate * static_cast<float> (oversamplingFactor));
             oversampling.processSamplesDown (baseRateBlock);
         }
 
@@ -376,8 +547,6 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                             1.0f - 1.0f / effectiveRatio);
                         processed *= gain;
                     }
-                    const auto glueDrive = 1.0f + comp * 0.75f;
-                    processed = std::tanh (processed * glueDrive) / std::tanh (glueDrive);
                 }
                 wet[static_cast<std::size_t> (channel)] = processed;
             }
@@ -397,7 +566,22 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
                 const auto modulation = static_cast<float> (
                     std::sin (state.wowPhase) * wow * wowDepth
                     + std::sin (state.flutterPhase) * flutter * flutterDepth);
-                const auto modulatedDelay = std::max (1.0f, wetBaseDelay + modulation);
+                state.vinylWowPhase += twoPi * 0.37 / currentSampleRate;
+                state.vinylFlutterPhase += twoPi * 6.3 / currentSampleRate;
+                if (state.vinylWowPhase >= twoPi)
+                    state.vinylWowPhase -= twoPi;
+                if (state.vinylFlutterPhase >= twoPi)
+                    state.vinylFlutterPhase -= twoPi;
+                const auto vinylModulationAmount = std::clamp (
+                    (state.smoothedVinyl - 0.75f) * 4.0f, 0.0f, 1.0f);
+                const auto vinylModulation = vinylModulationAmount > 0.0f
+                    ? static_cast<float> (
+                          std::sin (state.vinylWowPhase) * 0.00006
+                          + std::sin (state.vinylFlutterPhase) * 0.000015)
+                          * vinylModulationAmount * sampleRate
+                    : 0.0f;
+                const auto modulatedDelay = std::max (
+                    1.0f, wetBaseDelay + modulation + vinylModulation);
                 const auto dryInput = channels[channel][inputSample];
 
                 delayLines[channelIndex][writePosition] = dryInput;
@@ -419,54 +603,35 @@ void MakosizerXDSP::process (float* const* channels, int numChannels, int numSam
 
             for (int channel = 0; channel < activeChannels; ++channel)
             {
-                auto output = dryDelayed[static_cast<std::size_t> (channel)]
-                              + mix * (wetDelayed[static_cast<std::size_t> (channel)]
-                                       - dryDelayed[static_cast<std::size_t> (channel)]);
-
-                if (limiter > 0.0f)
-                {
-                    auto& limiterLine = limiterDelayLines[static_cast<std::size_t> (channel)];
-                    limiterLine[limiterWritePosition] = output;
-                    const auto lookAheadPosition =
-                        (limiterWritePosition + limiterLine.size()
-                         - static_cast<std::size_t> (
-                             std::round (currentSampleRate * 0.005)))
-                        % limiterLine.size();
-                    output = limiterLine[lookAheadPosition];
-
-                    const auto magnitude = std::abs (output);
-                    auto& state = channelStates[static_cast<std::size_t> (channel)];
-                    const auto envelopeCoefficient = magnitude > state.limiterEnvelope
-                        ? limiterAttack
-                        : limiterRelease;
-                    state.limiterEnvelope = envelopeCoefficient * state.limiterEnvelope
-                        + (1.0f - envelopeCoefficient) * magnitude;
-
-                    if (state.limiterEnvelope > limiterThreshold)
-                    {
-                        const auto overshootDb = 20.0f * std::log10 (
-                            state.limiterEnvelope / limiterCeiling);
-                        const auto targetGainDb = std::min (
-                            0.0f, -std::max (0.0f, overshootDb));
-                        const auto targetGain = std::pow (10.0f, targetGainDb / 20.0f);
-                        output *= targetGain;
-                        maximumLimiterGainReductionDb = std::max (
-                            maximumLimiterGainReductionDb, -targetGainDb);
-                    }
-                    if (std::abs (output) > limiterCeiling)
-                        maximumLimiterGainReductionDb = std::max (
-                            maximumLimiterGainReductionDb,
-                            20.0f * std::log10 (std::abs (output) / limiterCeiling));
-                    output = std::clamp (output, -limiterCeiling, limiterCeiling);
-                }
-
-                channels[channel][inputSample] = output;
+                const auto output = dryDelayed[static_cast<std::size_t> (channel)]
+                                    + mix * (wetDelayed[static_cast<std::size_t> (channel)]
+                                             - dryDelayed[static_cast<std::size_t> (channel)]);
+                nonlinearBuffer.setSample (channel, sample, output);
             }
 
             writePosition = (writePosition + 1) % delayLines[0].size();
-            limiterWritePosition =
-                (limiterWritePosition + 1) % limiterDelayLines[0].size();
         }
+
+        if (oversamplingIndex == 0)
+        {
+            processLimiterStages (baseRateBlock, limiter, 1,
+                                  maximumLimiterGainReductionDb);
+        }
+        else
+        {
+            const auto oversamplingFactor = 1 << oversamplingIndex;
+            auto& oversampling = *oversamplingProcessors[
+                static_cast<std::size_t> (oversamplingIndex - 1)];
+            auto oversampledBlock = oversampling.processSamplesUp (baseRateBlock);
+            processLimiterStages (oversampledBlock, limiter, oversamplingFactor,
+                                  maximumLimiterGainReductionDb);
+            oversampling.processSamplesDown (baseRateBlock);
+        }
+
+        for (int sample = 0; sample < blockSize; ++sample)
+            for (int channel = 0; channel < activeChannels; ++channel)
+                channels[channel][blockOffset + sample] =
+                    nonlinearBuffer.getSample (channel, sample);
 
         blockOffset += blockSize;
     }
