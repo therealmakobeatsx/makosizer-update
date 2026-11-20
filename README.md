@@ -34,8 +34,11 @@ when a new Linux package is also required. Manual builds upload
 as downloadable Actions artifacts without publishing a GitHub Release. A push
 to `main` automatically creates and publishes the next stable semantic
 version, packages all platform downloads, and generates release notes and a
-downloadable changelog. The raw VST3 bundles and macOS AU component are also
-available in the corresponding Actions build artifacts.
+downloadable changelog. For an artifact-only Windows/macOS push build without
+rebuilding Linux packages, include `[cross-platform-artifacts]` in the commit
+message; that run does not publish a GitHub Release. The raw VST3 bundles and
+macOS AU component are also available in the corresponding Actions build
+artifacts.
 Commit messages use Conventional
 Commits for release increments: `feat:` advances the minor version,
 `BREAKING CHANGE:` or `type!:` advances the major version, and other changes
